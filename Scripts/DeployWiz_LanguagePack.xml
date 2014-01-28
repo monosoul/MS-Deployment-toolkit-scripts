@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_LanguagePack.vbs</CustomScript>
+	</Global>
+
+	<Pane id="SelectLanguagePack" title="Language Packs">
+
+		<Initialization><![CDATA[ LanguagePack_Initialization  ]]> </Initialization>
+
+		<!-- All Content here is displayed to the body of the window. -->
+		<Body>
+		<![CDATA[
+
+           <!-- Use the H1 Style for titles at the top of the page -->
+           <H1>Select the language packs to install.</H1>
+
+				<div class=TreeList id=PackagesListBox style="height: expression( GetDynamicListBoxSize(this) );">
+					
+
+					<!-- List goes here -->
+
+				</div>
+				<input type=hidden Name=LanguagePacks disabled value="" />
+				<input type=hidden Name=LanguagePacks disabled value="" />
+
+  
+        ]]>
+
+		</Body>
+	</Pane>
+</Wizard>

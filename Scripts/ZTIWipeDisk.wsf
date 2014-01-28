@@ -1,0 +1,118 @@
+<job id="ZTIWipeDisk">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIWipeDisk.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Wipe the hard disk
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIWipeDisk.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+Dim oWipeDisk
+Dim iScriptRC
+
+If Not oUtility.Arguments.Exists("DebugCapture") Then
+	On Error Resume Next
+End If
+
+Set oWipeDisk = New ZTIWipeDisk
+TestAndFail SUCCESS, 10000, "Create object: Set " & sClassInstance & " = New " & sClassName
+
+iScriptRc =  oWipeDisk.Main
+If iScriptRc <> SUCCESS then
+	'Do not call ProcessResults if the results were successful, oWipeDisk may have cleaned the log.
+	ProcessResults iScriptRc
+End if
+
+Wscript.quit iScriptRc
+
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIWipeDisk
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	' No instance variables are required
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' No initialization is required
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim Drive,Partition,sDataDrive
+		Dim sCmd,sError,iResult
+
+
+		iRetVal = Success
+
+
+		'//----------------------------------------------------------------------------
+		'//  See what we need to do
+		'//----------------------------------------------------------------------------
+
+		If UCase(oEnvironment.Item("WipeDisk")) <> "TRUE" then
+			oLogging.CreateEntry "Wipe disk bypassed.", LogTypeInfo
+			Main = Success
+			Exit Function
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Figure out what drive to wipe
+		'//----------------------------------------------------------------------------
+
+		For each Drive in objWMI.ExecQuery("SELECT * from Win32_LogicalDisk WHERE DriveType = 3")
+			If Drive.DeviceID <> "X:" then
+
+				sDatadrive = Drive.DeviceID
+				sCmd = "cmd /c format " & sDataDrive & " /fs:ntfs /p:3 /Y"
+				TestAndLog oUtility.RunWithHeartbeat(sCmd), "Cleaning (reformatting) volume " & sDataDrive
+
+			End If
+
+		Next
+
+
+		Main = Success   ' Always succeed.  The errors and warnings from above will be reported so the process can continue.
+
+	End Function
+End Class
+	</script>
+</job>

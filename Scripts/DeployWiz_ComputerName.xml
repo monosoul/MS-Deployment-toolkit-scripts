@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_ComputerName.vbs</CustomScript>
+	</Global>
+
+	<Pane id="ComputerName" title="Computer Details">
+		<Body>
+		<![CDATA[
+
+<table style="width: 100%;">
+	<tr>
+		<td style="width:1px;">
+			<img src="DeployWiz_Computer.png">
+		</td>
+		<td style="width: 160px;"><span class=Larger>Compu<u class=Larger>t</u>er name:</span></td>
+		<td align="left">
+			<input type=text id="OSDComputerName" name=OSDComputerName size=15 language=vbscript onpropertychange=ValidateComputerName AccessKey=t />
+			<label class=ErrMsg for=OSDComputerName>* Required</label>
+			<label class=ErrMsg id=InvalidChar>Invalid characters!</label>
+			<label class=ErrMsg id=TooLong>Maximum of 15 characters!</label>
+		</td>
+	</tr>
+</table>
+
+<div id="DomainSection">
+
+<table style="width: 100%;">
+	<tr>
+		<td style="width:1px;">
+			<img src="DeployWiz_Network.png">
+		</td>
+		<td style="width: 10px;">
+			<input type=radio name="JDRadio" id="JDRadio1" checked language=vbscript onclick=ValidateDomainMembership accesskey=d>
+			<p>&nbsp;</p>
+		</td>
+		<td style="width: 140px;">
+			<label class=Larger for=JDRadio1>Join a <u class=larger>d</u>omain.</label>
+			</br></br>
+			Dom<u>a</u>in to join:
+		</td>
+		<td>
+			<p>&nbsp;</p>
+			<p><input type=text id=JoinDomain name=JoinDomain size=30 language=vbscript onpropertychange=ValidateDomainMembership accesskey=a>
+			<label class=ErrMsg for=JoinDomain>* Required</label>&nbsp;
+			</p>
+		</td>
+	</tr>
+
+	<tr>
+		<td colspan=2></td>
+		<td>
+			<u>O</u>rganizational Unit: 
+		</td>
+		<td id=PopupParent>
+			<input type=text id=MachineObjectOU name=MachineObjectOU size=30 language=vbscript onpropertychange=ValidateDomainMembership accesskey=O>
+			<input type="button" id=MachineObjectOUOptionalBtn hidefocus="1" value="&#9660;" style="height:23; width:16; font-family: helvetica; font-size: 7pt; display: none;" onclick="JavaScript:HideUnHideComboBox();">
+			
+			<div id="PopupBox" style="position:absolute; display:none; z-index:10000; width: 240px; left: 250px;" >
+			
+				<select size="6" id="MachineObjectOUOptional" style="width: 100%; border-style: none"
+				 onchange="JavaScript:MachineObjectOU.value = this.value;"
+				 onclick="javascript:HideUnHideComboBox();">
+				</select>
+
+			</div>
+		</td>
+	</tr>
+
+	<tr>
+		<td colspan="2"></td><td colspan="2"><label class=ErrMsg id=InvalidOU>* Invalid OU format (must start with OU=)</label>&nbsp;</td>
+	</tr>
+	
+	<tr>
+		<td colspan=2></td>
+		<td>
+			User Na<u>m</u>e:
+		</td>
+		<td>
+			<input type=text id=DomainAdmin Name="DomainAdmin" size=30 language=vbscript onpropertychange=ValidateDomainMembership accesskey=m>
+		</td>
+	</tr>
+	<tr>
+		<td colspan=2></td>
+		<td>
+			<u>P</u>assword:
+		</td>
+		<td>
+			<input type=password id=DomainAdminPassword Name="DomainAdminPassword" size=30 language=vbscript onpropertychange=ValidateDomainMembership AccessKey=p>
+		</td>
+	</tr>
+	<tr>
+		<td colspan=2></td>
+		<td>
+			Doma<u>i</u>n:
+		</td>
+		<td>
+			<input type=text id=DomainAdminDomain Name="DomainAdminDomain" size=30 language=vbscript onpropertychange=ValidateDomainMembership AccessKey=i>
+		</td>
+	</tr>
+
+	<tr>
+		<td colspan=2></td>
+		<td colspan="2">
+			&nbsp;<label class=ErrMsg id=MissingCredentials>* Missing join credentials</label><label class=ErrMsg id=InvalidCredentials>* Invalid join credentials</label>
+		</td>
+	</tr>
+
+	<tr>
+		<td></td>
+		<td>
+			<input type=radio name="JDRadio" id="JDRadio2" language=vbscript onclick=ValidateDomainMembership accesskey=W>
+		</td>
+		<td colspan="3">
+		    <label class=Larger for=JDRadio2>Join a <u class=larger>w</u>orkgroup.</label>
+		</td>
+	</tr>
+	<tr>
+		<td colspan=2></td>
+		<td>
+			<p>Wor<u>k</u>group:
+		</td>
+		<td>
+			<input type=text id=JoinWorkgroup name=JoinWorkgroup size=30 onpropertychange=javascript:ValidateDomainMembership();  AccessKey=k>&nbsp;
+			<label class=ErrMsg for=JoinWorkgroup>* Required</label>&nbsp;
+		</td>
+	</tr>
+</table>
+
+</div>
+
+		]]>
+		</Body>
+		<Initialization><![CDATA[InitializeDomainMembership]]></Initialization>
+		<Initialization><![CDATA[InitializeComputerName]]> </Initialization>
+		<Validation><![CDATA[ValidateDomainMembership]]></Validation>
+		<Validation><![CDATA[ValidateComputerName]]></Validation>
+		<Validation><![CDATA[ValidateDomainMembership_Final]]></Validation>
+	</Pane>
+
+</Wizard>

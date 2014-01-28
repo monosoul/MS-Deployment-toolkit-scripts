@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      WelcomeWiz_Choice.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Welcome wizard choice pane definition
+' // 
+' // ***************************************************************************
+
+-->
+<Wizard>
+	<Global>
+		<CustomScript>WelcomeWiz_Choice.vbs</CustomScript>
+		<HideNavigation>true</HideNavigation>
+	</Global>
+
+
+	<Pane id="Ready" title="Welcome">
+
+		<ButtonNext>
+			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>]]></Label>
+		</ButtonNext>
+		<ButtonCancel>
+			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" ><U>R</U>eboot</button>]]></Label>
+		</ButtonCancel>
+		<ButtonPrev>
+			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >B</U>ack</button>]]></Label>
+		</ButtonPrev>
+
+		<Initialization><![CDATA[ WelcomeWizard_CustomInitialization ]]> </Initialization>
+		<InitializationCloseout><![CDATA[ WelcomeWizard_CustomInitializationCloseout ]]> </InitializationCloseout>
+		<Validation><![CDATA[ RunSelectedCommand ]]> </Validation>
+		<HideBackNext>true</HideBackNext>
+
+		<Body><![CDATA[
+
+<br/>
+			<div style="text-align: center; height: 310px;">
+
+
+			<button style="background: inherit; background-image: url(btnsel.png); width: 600px; height: 70px; border: 0px; font: 20px; font-weight: bold;" id="buttonItem1" 
+			title="Run the Microsoft Deployment Wizard to install an Operating System or perform other task."
+			onmouseover="RunSelCmd" onmouseout="RunSelCmd" onclick="RunSelCmd" ondblclick="RunSelCmd" onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
+			>Run the Deployment Wizard <br/>to install a new Operating System</button>
+			<br/>
+
+			<button style="background: inherit; background-image: url(btnout.png); width: 600px; height: 70px;border: 0px;font: 20px; font-weight: bold;" id="buttonItem2" 
+			title="Run the Microsoft Windows Recovery Wizard (WinRE) to repair an existing installation of Windows."
+			onmouseover="RunSelCmd" onmouseout="RunSelCmd"  onclick="RunSelCmd" ondblclick="RunSelCmd"  onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
+			>Run the Windows Recovery Wizard</button>
+			<br/>
+
+			<button style="background: inherit; background-image: url(btnout.png); width: 600px; height: 70px;border: 0px;font: 20px; font-weight: bold;" id="buttonItem3" 
+			title="Run Microsoft Diagnostics and Recovery Toolset (DaRT) tools."
+			onmouseover="RunSelCmd" onmouseout="RunSelCmd"  onclick="RunSelCmd" ondblclick="RunSelCmd"  onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
+			>Run DaRT tools</button>
+			<br/>
+
+			<button style="background: inherit; background-image: url(btnout.png); width: 600px; height: 70px;border: 0px;font: 20px; font-weight: bold;" id="buttonItem4" 
+			title="For advanced users"
+			onmouseover="RunSelCmd" onmouseout="RunSelCmd"  onclick="RunSelCmd" ondblclick="RunSelCmd"  onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
+			>Exit to Command Prompt</button>
+
+			</div>
+
+<br/>
+
+			<div style="text-align: center;">
+
+			<table>
+			<tr>
+				<td align=right>Keyboard Layout</td>
+				<td> <select id=WinPEKeyboard Name=KeyboardLocalePE style="width: 400px;" >
+					<option value="0409:00000409">United States</option>
+					</select>
+				</td>
+			</tr>
+			<tr>
+				<td align=right>Configure Static IP</td>
+				<td><input type=button value="Configure with Static IP Address..." onclick="configureStaticIP" title="For advanced users" /></td>
+			</tr>
+			</table>
+
+			</div>
+
+		]]>
+		</Body>
+	</Pane>
+
+</Wizard>

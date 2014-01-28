@@ -1,0 +1,242 @@
+<job id="ZTIDomainJoin">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIDomainJoin.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   During "State Restore" phase, will verify and recover Domain Join
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIDomainJoin.wsf [/debug:true]
+' // 
+' // Where:     Three values are possible for DomainErrorRecovery, which is used
+' //            when JoinDomain is defined and the machine has not already been
+' //            joined to a domain: 
+' //               Auto   - Retry the domain join. Reboot and retry. (default)
+' //               Fail   - Stop all processing. All Task Sequence Processing stops.
+' //               Manual - Stop processing, allow user to manually fix the issue.
+' //            This value is set in the "Recover from domain" task sequence
+' //            action.
+' // 
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIDomainJoin
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public DomainJoinAttempts
+	Public DomainJoinAttempts_MAX
+	
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+		DomainJoinAttempts_MAX = 3
+
+		DomainJoinAttempts = oEnvironment.Item("DomainJoinAttempts")
+		If not IsNumeric(DomainJoinAttempts) then
+			DomainJoinAttempts = 0
+		End if 
+		DomainJoinAttempts = DomainJoinAttempts + 1
+		oEnvironment.Item("DomainJoinAttempts") = DomainJoinAttempts
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+	
+	Function IsMemberOfDomain ( sDomain ) 
+		Dim oComputer
+	
+		IsMemberOfDomain = False
+		for each oComputer in objWMI.InstancesOf("Win32_ComputerSystem")
+			Select Case oComputer.DomainRole
+				Case 0, 2
+					exit function
+				Case 1, 3, 4, 5
+					oLogging.CreateEntry "Check Win32_ComputerSystem.DomainRole = " & oComputer.DomainRole & "  For Domain: " & oComputer.Domain, LogTypeInfo
+					' Optionally we can test to see if we are allready in a specific domain.
+					IsMemberOfDomain = Instr( 1, oComputer.Domain , sDomain, vbTextCompare ) <> 0  
+					exit function
+				Case else
+					oLogging.CreateEntry "Unknown value for Win32_ComputerSystem.DomainRole = " & oComputer.DomainRole, LogTypeWarning
+			End Select				
+		Next
+		
+		oLogging.CreateEntry "Unknown Domain Status (Win32_ComputerSystem did not return any instances).", LogTypeWarning
+	
+	End function
+	
+
+	Function Main
+	
+		' Local Variables
+
+		Dim iRetVal
+		Dim oComputer
+		Dim sLTISuspend
+		Dim sMessage
+
+		iRetVal = SUCCESS
+
+
+		' Main script processing
+
+		If oEnvironment.Item("JoinWorkgroup") <> "" then
+		
+			oLogging.CreateEntry "Not attempting to join a domain because JoinWorkgroup = " & oEnvironment.Item("JoinWorkgroup") & ".", LogTypeInfo
+			
+		ElseIf oEnvironment.Item("JoinDomain") <> "" then
+
+			oLogging.CreateEntry "Verifying that the computer is joined to the requested domain.", LogTypeInfo
+		
+			If IsMemberOfDomain(oEnvironment.Item("JoinDomain")) then
+			
+				oLogging.CreateEntry "The computer is already a member of a domain.", LogTypeInfo
+			
+			ElseIf DomainJoinAttempts > DomainJoinAttempts_MAX then
+			
+				oLogging.CreateEntry "Consult file: c:\windows\debug\NetSetup.LOG for more debugging information.", LogTypeInfo
+				oLogging.CreateEvent 41051, LogTypeWarning, "ZTIDomainJoin has attempted to join to domain [" & oEnvironment.Item("JoinDomain") & "] too many times. Count = " & DomainJoinAttempts, Array(10205)
+
+			Else
+
+				' Sync up to a Time Server to ensure that the domain join is successful.
+
+				If oEnvironment.Item("DomainJoinTimeSync") = "" then
+					oEnvironment.Item("DomainJoinTimeSync") = "OnlySyncOnce"
+
+					If instr(3,oEnvironment.Item("DeployRoot"),"\",vbTextCompare) > 0 then
+						oUtility.RunWithConsoleLogging "net time " & left(oEnvironment.Item("DeployRoot"),instr(3,oEnvironment.Item("DeployRoot"),"\",vbTextCompare)-1) & " /set /y"
+					End if
+
+				End if
+
+
+				' Join a domain
+				
+				If ucase(oEnvironment.Item("DomainErrorRecovery")) = "AUTO" or ucase(oEnvironment.Item("DomainErrorRecovery")) = "" then
+				
+					oLogging.CreateEntry "DomainErrorRecovery Action: AutoRetry.", LogTypeInfo
+
+					for each oComputer in objWMI.InstancesOf("Win32_ComputerSystem")
+
+						oLogging.CreateEntry "Initiating domain join operation using JoinDomainOrWorkgroup." , LogTypeInfo
+
+						iRetVal = oComputer.JoinDomainOrWorkgroup( _
+							oEnvironment.Item("JoinDomain"), _
+							oEnvironment.Item("DomainAdminPassword"), _
+							oEnvironment.Item("DomainAdminDomain") & "\" & oEnvironment.Item("DomainAdmin"), _
+							oEnvironment.Item("MachineObjectOU"), _
+							3 ) ' (1)Join Domain + (2)Create
+
+						oLogging.CreateEntry "Initial attempt: JoinDomain(" & oEnvironment.Item("JoinDomain") & ",PWD," & oEnvironment.Item("DomainAdminDomain") & "\" & oEnvironment.Item("DomainAdmin") & "," & oEnvironment.Item("MachineObjectOU") & ",3), rc = " & CStr(iRetVal), LogTypeInfo
+							
+						If iRetVal <> 0 then
+							oLogging.CreateEntry "JoinDomain Failure: The account *may* already exist in a different OU. Retrying without the specified OU.", LogTypeInfo
+							
+							iRetVal = oComputer.JoinDomainOrWorkgroup( _
+								oEnvironment.Item("JoinDomain"), _
+								oEnvironment.Item("DomainAdminPassword"), _
+								oEnvironment.Item("DomainAdminDomain") & "\" & oEnvironment.Item("DomainAdmin"), _
+								"", _
+								1 ) ' (1)Join Domain
+
+							oLogging.CreateEntry "Retry attempt: JoinDomain(" & oEnvironment.Item("JoinDomain") & ",PWD," & oEnvironment.Item("DomainAdminDomain") & "\" & oEnvironment.Item("DomainAdmin") & ",,3), rc = " & CStr(iRetVal), LogTypeInfo							
+
+						End if
+
+						If iRetVal = 0 then
+
+							oLogging.CreateEntry "JoinDomain Succeeded", LogTypeInfo
+
+						ElseIf iRetVal = 2691 then
+						
+							' It is possible that IsMemberOfDomain() might incorrectly return failure.
+							' For example when the requested NetBios Domain Name (EngSvc) is not a subset of the actual DNS Domain: (Engineering-Services.Fabrikam.com)
+
+							oLogging.CreateEntry "Machine is already a member of the domain (2).", LogTypeInfo
+							Main = SUCCESS
+							Exit function
+						
+						End if 
+
+						oLogging.CreateEntry "Initiating a reboot.", LogTypeInfo
+						
+						oEnvironment.Item("LTISuspend") = ""
+						oEnvironment.Item("SMSTSRetryRequested") = "true"
+						oEnvironment.Item("SMSTSRebootRequested") = "true"
+						iRetVal = SUCCESS
+						
+					Next
+
+
+				ElseIf ucase(oEnvironment.Item("DomainErrorRecovery")) = "MANUAL" then
+				
+					oLogging.CreateEntry "DomainErrorRecovery Action: ManualRetry.", LogTypeInfo
+					
+					iRetVal = oUtility.FindFile ( "LTISuspend.wsf", sLTISuspend )
+					TestAndFail iRetVal, 10203, "FindFile(LTISuspend.wsf)"
+					iRetVal = oUtility.RunWithHeartbeat ( "cscript.exe //nologo """ & sLTISuspend & """" )
+					TestAndFail iRetVal, 10204, "Run Program " & sLTISuspend
+
+					oEnvironment.Item("LTISuspend") = "The machine was not joined to the requested domain [" & oEnvironment.Item("JoinDomain") & "]. Please manually join to this domain."
+					oEnvironment.Item("SMSTSRebootRequested") = "true"
+					oEnvironment.Item("SMSTSRetryRequested") = "true"
+					iRetVal = SUCCESS
+
+				ElseIf ucase(oEnvironment.Item("DomainErrorRecovery")) = "FAIL" then
+				
+					oLogging.CreateEntry "DomainErrorRecovery Action: FailNoRetry.", LogTypeInfo
+					oLogging.ReportFailure "Unable to Join Domain " & oEnvironment.Item("JoinDomain") & " Stop installation." , 10201
+
+
+				Else
+				
+					oLogging.CreateEntry "Unknown DomainErrorRecovery Action: " & oEnvironment.Item("DomainErrorRecovery"), LogTypeWarning
+				
+				End if
+			
+			End if		
+			
+		Else
+		
+			oLogging.CreateEntry "Neither JoinDomain or JoinWorkgroup is defined.", LogTypeInfo
+		
+		End if
+		
+		
+		'Cleanup and Exit
+
+		Main = iRetVal
+
+	End Function
+
+
+End class
+
+
+	</script>
+</job>

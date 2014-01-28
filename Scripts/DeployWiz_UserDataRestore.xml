@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_UserDataRestore.vbs</CustomScript>
+	</Global>
+
+	<Pane id="UserDataRestore" title="User Data (Restore)">
+		<Body>
+         <![CDATA[
+<H1>Specify whether to restore user data.</H1>
+<table>
+
+	<tr>
+		<td>
+			<input type=radio name="UserDataLocation" id="UDRadio1" checked value="NONE" language=vbscript onclick=ValidateUserDataRestoreLocation  AccessKey=r>
+		</td>
+		<td>
+			<Label class="Larger" for=UDRadio1 language=vbscript >Do not <u class=larger>r</u>estore user data and settings.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<p>This is not a replacement computer, so there are no user data and settings to restore.</p>
+		</td>
+	</tr>
+
+
+	<tr><td colspan=2>&nbsp;</td></tr>
+
+	<tr>
+		<td>
+			<input type=radio name="UserDataLocation" id="UDRadio2" Value="NETWORK" language=vbscript onclick=ValidateUserDataRestoreLocation  AccessKey=S>
+		</td>
+		<td>
+			<Label class="Larger" for=UDRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<div>Restore user data and settings from a network location created from a different machine.</div>
+			<br>
+			<div>L<u>o</u>cation:</div>
+			<input type=text id="StatePath" name="StatePath" size=65 disabled language=vbscript AccessKey=O>
+			<input type="button" id="StatePathBrowse" style="display: none;" onclick="javascript:StatePath.value = BrowseForFolder(StatePath.value);" Value="Browse" disabled /><br/>(Full network path to previously saved USMT data files).<br/>
+			<div><label class=ErrMsg for=StatePath>* Required (MISSING)</label>  <label class=ErrMsg id=InvalidPath>* Invalid path!</label><br/></div>
+		</td>
+	</tr>
+
+</table>
+		]]>
+		</Body>
+ 		<Initialization><![CDATA[InitializeUserDataRestoreLocation]]></Initialization>
+ 		<Validation><![CDATA[ValidateUserDataRestoreLocation]]></Validation>
+	</Pane>
+
+</Wizard>

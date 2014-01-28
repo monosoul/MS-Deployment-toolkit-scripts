@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_AdminPassword.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Wizard pane for specifying list of Local Administrators
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+
+	<Pane id="AdminAccounts" title="Local Administrators">
+		<Body>
+		<![CDATA[
+<H1>Specify accounts to be added to the local Administrators group.</H1>
+
+<p>&nbsp;</p>
+
+<table>
+	<tr valign=top>
+
+	<td width=100>
+		<img src="DeployWiz_Administrator.png">
+	</td>
+
+	<td width="100%">
+		Administrator Accounts: <br><br>
+		<input id="Password1" name="Administrators001"  size=30> <br><br>
+		<input id="Password2" name="Administrators002"  size=30> <br><br>
+		<input id="Password3" name="Administrators003"  size=30> <br><br>
+
+		(Example: &quot;&lt;domain&gt;\&lt;username&gt;&quot;)<br><br>
+	</td>
+
+	</tr>
+</table>
+
+			]]>
+		</Body>
+	</Pane>
+
+</Wizard>

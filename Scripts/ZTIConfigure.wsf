@@ -1,0 +1,598 @@
+<job id="ZTIConfigure">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript" src="ZTIDiskUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIConfigure.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Updates answer files with specified settings
+' // 
+' // Usage:     cscript ZTIConfigure.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+'//----------------------------------------------------------------------------
+'//  End declarations
+'//----------------------------------------------------------------------------
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIConfigure
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+		Dim oMapping
+		Dim iRc
+		Dim sMappingFile
+
+		Dim oBuilds
+		Dim oOS
+		Dim oNode
+
+		Dim sUnattendTxt
+		Dim sUnattendXml
+		Dim oUnattendXml
+		Dim bMerge
+		Dim oMerge
+		Dim sSysprepInf
+
+		Dim sTmp
+		Dim sCmd
+		Dim sElement
+		Dim sPrev
+		Dim oCurrent
+		Dim bChanged
+		Dim oPaths
+		Dim oPath
+		Dim sPath
+		Dim oRemoves
+		Dim oRemove
+		Dim sBuildPath
+		Dim sRemoveIfBlank
+
+		iRetVal = SUCCESS
+
+		' Main script processing
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+		
+		On Error Resume Next
+		
+
+
+		' If the DeployRoot is configured, make sure we have a connection to it.
+
+		If oEnvironment.Item("DeployRoot") <> "" then
+			oUtility.ValidateConnection oEnvironment.Item("DeployRoot")
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Load the mapping file
+		'//----------------------------------------------------------------------------
+
+		iRc = oUtility.FindFile("ZTIConfigure.xml", sMappingFile)
+		TestAndFail iRc, 7000, "Unable to locate ZTIConfigure.xml, aborting"
+		
+		Set oMapping = CreateObject("MSXML2.DOMDocument")
+		oMapping.load sMappingFile
+
+		oUtility.ReCalculateDestinationDiskAndPartition
+
+
+		'//----------------------------------------------------------------------------
+		'//  Find the files
+		'//----------------------------------------------------------------------------
+
+		' For Lite Touch, the files will be in the build directory.  For OSD, they will
+		' be in the same directory as this script (also pointed to by DeployRoot).
+
+		sBuildPath = oEnvironment.Item("DeployRoot") & "\Control\" & oEnvironment.Item("TaskSequenceID")
+		If not oFSO.FolderExists(sBuildPath) then
+			sBuildPath = oEnvironment.Item("DeployRoot")
+		End If
+		If oEnvironment.Item("OSDAnswerFilePathSysprep") = "" Then
+			iRetVal = oUtility.FindSysprepAnswerFile
+		End If
+		sSysprepInf = oEnvironment.Item("OSDAnswerFilePathSysprep")
+
+
+		' Find unattend answer file
+		If oEnvironment.Item("OSDAnswerFilePath") = "" Then
+			iRetVal = oUtility.FindUnattendAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+		End If
+		
+
+		If Instr(1,oEnvironment.Item("OSDAnswerFilePath"),".txt",vbTextCompare) >0 then
+			sUnattendTxt= oEnvironment.Item("OSDAnswerFilePath")
+			
+		ElseIF Instr(1,oEnvironment.Item("OSDAnswerFilePath"),".xml",vbTextCompare) >0 then
+			sUnattendXML = oEnvironment.Item("OSDAnswerFilePath")
+			bMerge = True
+
+			IF sUnattendXML = oUtility.LocalRootPath & "\Unattend.xml" Then
+				bMerge = False
+			End If
+				
+		End if
+
+
+		' First see if there is already a local unattend.xml.  If not, copy one.
+
+		' Make copies of the file if debugging
+
+		If oLogging.Debug then
+			If sSysprepInf <> "" then
+				oFSO.CopyFile sSysprepInf, oLogging.LogPath & "\sysprep_BEFORE_" & oEnvironment.Item("PHASE") & ".txt", true
+			End if
+			If sUnattendTxt <> "" then
+				oFSO.CopyFile sUnattendTxt, oLogging.LogPath & "\unattend_BEFORE_" & oEnvironment.Item("PHASE") & ".txt", true
+			End if
+			If sUnattendXml <> "" then
+				oFSO.CopyFile sUnattendXml, oLogging.LogPath & "\unattend_BEFORE_" & oEnvironment.Item("PHASE") & ".xml", true
+			End if
+		End if
+
+
+		' Load the XML file (if found)
+
+		If sUnattendXml <> "" then
+
+			Set oUnattendXml = CreateObject("MSXML2.DOMDocument")
+			oUnattendXml.load sUnattendXml
+			oLogging.CreateEntry "Loaded " & sUnattendXml, LogTypeInfo
+
+		End if
+
+
+		' If necessary, merge in our changes
+
+		If bMerge and oFSO.FileExists(sBuildPath & "\Unattend.xml") then
+
+			oLogging.CreateEntry "Merging " & sBuildPath & "\Unattend.xml into " & sUnattendXml, LogTypeInfo
+			Set oMerge = CreateObject("MSXML2.DOMDocument")
+			oMerge.load sBuildPath & "\Unattend.xml"
+			oLogging.CreateEntry "Loaded " & sBuildPath & "\Unattend.xml for merging", LogTypeInfo
+
+			MergeXML oUnattendXml, oMerge
+			oLogging.CreateEntry "Merge complete.", LogTypeInfo
+
+		ElseIf bMerge then
+
+			oLogging.CreateEntry "Merge specified, but " & sBuildPath & "\Unattend.xml wasn't found, unable to merge", LogTypeWarning
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Update the settings
+		'//----------------------------------------------------------------------------
+
+
+		'Set Computername if deploying XP/2003
+		If Left(oEnvironment.Item("ImageBuild"),1) = 5 Then
+			If oEnvironment.Item("ComputerName") = "" and oEnvironment.Item("OSDComputerName") <> "" Then
+				oEnvironment.Item("ComputerName") = oEnvironment.Item("OSDComputerName")
+			End If
+		End If
+
+		' Loop through all the set-able values (from ZTIConfigure.xml)
+
+		bChanged = False
+
+		For each oNode in oMapping.documentElement.childNodes
+
+			' Does a matching property exist?  If so, do something about it.
+
+			sElement = oNode.getAttribute("id")
+			sTmp = oEnvironment.Substitute(oEnvironment.Item(sElement))
+				
+
+			Select Case oNode.getAttribute("type")
+			Case "ini"
+					
+				If sTmp <> "" then
+
+					' Quick patch for DomainAdmin entry on XP/2003, prefix with Domain Value if present
+					If UCase(sElement) = "DOMAINADMIN" Then
+						if instr(1,sTmp,"@",vbTextCompare) = 0 and instr(1,sTmp,"\",vbTextCompare) = 0 and oEnvironment.Substitute("DomainAdminDomain") <> "" then
+							sTmp = oEnvironment.Substitute(oEnvironment.Item("DomainAdminDomain")) & "\" & sTmp
+						end if
+					End if
+
+					If sSysprepInf <> "" then
+						sPrev = oUtility.ReadIni(sSysprepInf, oNode.text, sElement)
+
+						If UCase(sElement) = "MACHINEOBJECTOU" or Instr(sTmp, " ") > 0 then
+							oUtility.WriteIni sSysprepInf, oNode.text, sElement, """" & sTmp & """"	' Put quotes around the value
+						Else
+							oUtility.WriteIni sSysprepInf, oNode.text, sElement, sTmp		' No quotes needed
+						End if
+
+						If UCase(sElement) = "JOINDOMAIN" then
+							oUtility.WriteIni sSysprepInf, oNode.text, "JoinWorkgroup", ""			' Don't allow a conflict
+						End if
+						If UCase(sElement) = "ADMINPASSWORD" then
+							oUtility.WriteIni sSysprepInf, oNode.text, "EncryptedAdminPassword", ""		' It is now clear text
+						End if
+
+						oLogging.CreateEntry "Updated " & sSysprepInf & " section [" & oNode.text & "] with " & sElement & "=" & sTmp & " (value was " & sPrev & ")", LogTypeInfo
+					End if
+
+					If sUnattendTxt <> "" then
+						sPrev = oUtility.ReadIni(sUnattendTxt, oNode.text, sElement)
+
+						If UCase(sElement) = "MACHINEOBJECTOU" or Instr(sTmp, " ") > 0 then
+							oUtility.WriteIni sUnattendTxt, oNode.text, sElement, """" & sTmp & """"	' Put quotes around the value
+						Else
+							oUtility.WriteIni sUnattendTxt, oNode.text, sElement, sTmp		' No quotes needed
+						End if
+
+						If UCase(oNode.getAttribute("id")) = "JOINDOMAIN" then
+							oUtility.WriteIni sUnattendTxt, oNode.text, "JoinWorkgroup", ""			' Don't allow a conflict
+						End if
+						If UCase(sElement) = "ADMINPASSWORD" then
+							oUtility.WriteIni sUnattendTxt, oNode.text, "EncryptedAdminPassword", ""		' It is now clear text
+						End if
+
+						oLogging.CreateEntry "Updated " & sUnattendTxt & " section [" & oNode.text & "] with " & sElement & "=" & sTmp & " (value was " & sPrev & ")", LogTypeInfo
+					End if
+				Else
+					oLogging.CreateEntry "No value found for " & oNode.getAttribute("id"), LogTypeInfo
+				End if
+
+			Case "xml"
+
+				If sUnattendXml <> "" then
+
+					Set oPaths = oNode.selectNodes("xpath")
+					For each oPath in oPaths
+
+						' Get the right node
+
+						If IsNull(oPath.getAttribute("key")) then
+							sPath = oPath.text
+						Else
+							sPath = oPath.text & "[Key=""" & oPath.getAttribute("key") & """]/Value"
+						End if
+
+						Set oCurrent = oUnattendXml.selectSingleNode(sPath)
+
+
+						sRemoveIfBlank = oPath.getAttribute("removeIfBlank")
+						If IsNull(sRemoveIfBlank) then
+							sRemoveIfBlank = "FALSE"
+						End if
+						sRemoveIfBlank = UCase(sRemoveIfBlank)
+
+
+						If not (oCurrent is Nothing) then
+
+							sPrev = oCurrent.text
+
+							If sTmp = "" and sPrev = "" and sRemoveIfBlank = "SELF" then
+									
+									' Remove the node
+
+									oCurrent.parentNode.removeChild oCurrent
+									oLogging.CreateEntry "Removed " & sPath & " from " & sUnattendXml & " because the value was blank.", LogTypeInfo
+									bChanged = true
+
+							ElseIf sTmp = "" and sPrev = "" and sRemoveIfBlank = "PARENT" then
+
+									' Remove the node
+
+									oCurrent.parentNode.parentNode.removeChild oCurrent.parentNode
+									oLogging.CreateEntry "Removed parent of " & sPath & " from " & sUnattendXml & " because the value was blank.", LogTypeInfo
+									bChanged = true
+
+							ElseIf sTmp <> "" then
+
+								' Update the node's current value if not blank
+
+								oCurrent.text = sTmp
+								oLogging.CreateEntry "Updated " & sUnattendXml & " with " & sElement & "=" & sTmp & " (value was " & sPrev & ")", LogTypeInfo
+								bChanged = true
+
+
+								' See if this has a parallel "PlainText" entry, and if it does, set it to true
+
+								If not (oCurrent.parentNode.selectSingleNode("PlainText") is Nothing) then
+									oCurrent.parentNode.selectSingleNode("PlainText").text = "true"
+									oLogging.CreateEntry "Updated PlainText entry to true.", LogTypeInfo
+								End if
+
+
+								' Remove any contradictory entries
+
+								Set oRemoves = oNode.selectNodes("remove")
+								If not (oRemoves is Nothing) then
+									For each oRemove in oRemoves
+										sPath = oRemove.text
+										Set oCurrent = oUnattendXml.selectSingleNode(sPath)
+										If not (oCurrent is Nothing) then
+											oCurrent.parentNode.removeChild oCurrent
+											oLogging.CreateEntry "Removed " & sPath & " entry from " & sUnattendXml, LogTypeInfo
+										End if
+									Next
+								End if
+
+							Else
+								oLogging.CreateEntry "No value found for " & oNode.getAttribute("id"), LogTypeInfo
+							End if
+
+						Else
+							oLogging.CreateEntry sPath & " not found in " & sUnattendXml & ", unable to update.", LogTypeInfo
+						End if
+
+					Next
+
+				End if
+
+			Case Else
+
+				oLogging.CreateEntry "Warning: Invalid type " & oNode.getAttribute("type") & " found in ZTIConfigure.xml id=""" & sElement & """", LogTypeWarning
+
+			End Select
+
+		Next
+
+
+		' Make sure the servicing element is at the beginning, if present
+
+		If sUnattendXml <> "" then
+
+			Set oNode = oUnattendXml.selectSingleNode( "//unattend/servicing" )
+			If not oNode is nothing then
+				bChanged = true
+				oLogging.CreateEntry "Making sure <servicing> node is at the beginning of unattend.xml", LogTypeInfo
+				oUnattendXml.documentElement.insertBefore oNode, oUnattendXml.documentElement.childNodes.item(0)
+			End if
+
+		End if
+
+
+		' Make sure the windowsPE components specify the right platform (for deployment of x64 OSes from x86 PE)
+
+		If sUnattendXml <> "" and LCase(oEnvironment.Item("Architecture")) = "x86" then
+
+			For each oNode in oUnattendXml.selectNodes("//unattend/settings[@pass='windowsPE']/component[@processorArchitecture='amd64']")
+
+				bChanged = true
+				oNode.setAttribute "processorArchitecture", "x86"
+				oLogging.CreateEntry "Updated component processor architecture for " & oNode.getAttribute("name"), LogTypeInfo
+
+			Next
+
+		End if
+
+		'//----------------------------------------------------------------------------
+		'//  For OSD and SCCM deployments, remove the Autologon and run once entries
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentMethod") = "OSD" or oEnvironment.Item("DeploymentMethod") = "SCCM" then
+
+			If sUnattendXml <> "" then
+
+				' For Vista, strip out the AutoLogon and FirstLogonCommands
+
+				oLogging.CreateEntry "Removing AutoLogon and FirstLogonCommands entries from unattend.xml", LogTypeInfo
+
+				Set oNode = oUnattendXml.selectSingleNode("//settings[@pass='oobeSystem']/component[@name='Microsoft-Windows-Shell-Setup']/AutoLogon")
+				If not (oNode is Nothing) then
+					oNode.parentNode.removeChild oNode
+				End if
+
+				Set oNode = oUnattendXml.selectSingleNode("//settings[@pass='oobeSystem']/component[@name='Microsoft-Windows-Shell-Setup']/FirstLogonCommands")
+				If not (oNode is Nothing) then
+					oNode.parentNode.removeChild oNode
+				End if
+
+				Set oNode = oUnattendXml.selectSingleNode("//settings[@pass='oobeSystem']/component[@name='Microsoft-Windows-Shell-Setup']/UserAccounts/LocalAccounts")
+				If not (oNode is Nothing) then
+					oNode.parentNode.removeChild oNode
+				End if
+
+			End if
+
+			If sSysprepInf <> "" then
+
+				' For XP, remove the sysprep.inf entries
+
+				oLogging.CreateEntry "Removing GuiRunOnce and AutoLogon entries from sysprep.inf", LogTypeInfo
+
+				oUtility.WriteIni sSysprepInf, "GuiRunOnce", "", ""
+				oUtility.WriteIni sSysprepInf, "GuiUnattended", "AutoLogon", "No"
+				oUtility.WriteIni sSysprepInf, "GuiUnattended", "AutoLogonCount", "0"
+			End if
+
+			If sUnattendTxt <> "" then
+
+				' For XP, remove the unattend.txt entries
+
+				oLogging.CreateEntry "Removing GuiRunOnce and AutoLogon entries from unattend.txt", LogTypeInfo
+
+				oUtility.WriteIni sUnattendTxt, "GuiRunOnce", "", ""
+				oUtility.WriteIni sUnattendTxt, "GuiUnattended", "AutoLogon", "No"
+				oUtility.WriteIni sUnattendTxt, "GuiUnattended", "AutoLogonCount", "0"
+			End if
+
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Rewrite the Unattend.xml if it has been changed
+		'//----------------------------------------------------------------------------
+
+		If bChanged then
+			oUnattendXml.Save sUnattendXml
+			oLogging.CreateEntry "Rewrote " & sUnattendXml & " with changes", LogTypeInfo
+		End if
+
+
+		' Make copies of the file if debugging
+
+		If oLogging.Debug then
+			If sSysprepInf <> "" then
+				oFSO.CopyFile sSysprepInf, oLogging.LogPath & "\sysprep_AFTER_" & oEnvironment.Item("PHASE") & ".txt", true
+			End if
+			If sUnattendTxt <> "" then
+				oFSO.CopyFile sUnattendTxt, oLogging.LogPath & "\unattend_AFTER_" & oEnvironment.Item("PHASE") & ".txt", true
+			End if
+			If sUnattendXml <> "" then
+				oFSO.CopyFile sUnattendXml, oLogging.LogPath & "\unattend_AFTER_" & oEnvironment.Item("PHASE") & ".xml", true
+			End if
+		End if
+
+
+		oLogging.CreateEntry oUtility.ScriptName & " COMPLETED.  Return Value = " & iRetVal, LogTypeInfo
+
+		' All done
+		
+		On Error Goto 0
+		Main = iRetVal
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:	MergeXML
+	'//
+	'//  Input:	oDestination - destination element
+	'//             oSource - source element
+	'//
+	'//  Return:	Success - 0
+	'//		Failure - 1
+	'//
+	'//  Purpose:	Merge two XML elements
+	'//
+	'//---------------------------------------------------------------------------
+
+	Function MergeXML(oDestination, oSource)
+
+		Dim oChild
+		Dim sPath
+		Dim i
+		Dim oFound
+		Dim o
+		Dim doAdd
+
+		For each oChild in oSource.childNodes
+
+			If oChild.nodeTypeString = "element" then
+
+				' Build a query to find the node in the destination
+
+				sPath = oChild.nodeName
+				If not (oChild.Attributes is nothing) then
+					If oChild.Attributes.length > 0 then
+
+						sPath = sPath & "["
+
+						For i = 0 to oChild.Attributes.length - 1
+							If UCase(Left(oChild.Attributes.item(i).name, 6)) = "XMLNS:" then
+								' Ignore the namespaces when searching, assuming that the namespaces are defined at a higher level
+							Else
+								sPath = sPath & "@" & oChild.Attributes.item(i).name & "='" & oChild.Attributes.item(i).value & "' and "
+							End if
+						Next
+
+						sPath = Left(sPath, Len(sPath) - 5) & "]"
+
+					End if
+				End if
+
+				oLogging.CreateEntry "Searching for " & sPath, LogTypeInfo
+				Set oFound = oDestination.selectSingleNode(sPath)
+				If oFound is nothing then
+
+					' See if this is needed (some aren't for OSD)
+
+					doAdd = true
+					If oEnvironment.Item("DeploymentMethod") = "OSD" or oEnvironment.Item("DeploymentMethod") = "SCCM" then
+
+						Select case sPath
+						Case "RunSynchronous"
+						Case "AutoLogon"
+						Case "FirstLogonCommands"
+							doAdd = false
+						End Select
+
+					End if
+
+
+					' Not found, add it
+
+					If doAdd then
+
+						oLogging.CreateEntry "Adding new child " & sPath, LogTypeInfo
+						oDestination.appendChild oChild
+
+					Else
+
+						oLogging.CreateEntry "Not adding child " & sPath & " (not needed with OSD)", LogTypeInfo
+
+					End if
+
+				Else
+
+					' Found, process the children
+
+					oLogging.CreateEntry "Child " & sPath & " already exists, checking its children", LogTypeInfo
+					MergeXML oFound, oChild
+
+				End if
+
+			End if
+
+		Next
+
+	End Function
+
+End class
+
+   </script>
+</job>

@@ -1,0 +1,354 @@
+<job id="ZTISCCM">
+	<script language="VBScript">
+
+	' Due to an issue that may exist in x64 images captured by MDT 2010 Lite Touch, 
+	' there may be a need to clean up a bad registry key that would cause this script
+	' to get into an infinite loop.  This logic will fix that bad registry key
+	' when necessary.
+
+	Dim tmpShell, tmpFSO
+	Set tmpShell = CreateObject("WScript.Shell")
+	Set tmpFSO = CreateObject("Scripting.FileSystemObject")
+	If tmpFSO.FileExists(tmpShell.ExpandEnvironmentStrings("%WINDIR%\SysWOW64\CCM\TSCore.DLL")) then
+		On Error Resume Next
+		tmpShell.RegWrite "HKCR\TypeLib\{D5E1749D-832D-4587-AFC3-9462187FE2F5}\1.0\0\win64\", tmpShell.ExpandEnvironmentStrings("%WINDIR%\SysWOW64\CCM\TSCore.DLL")
+		On Error Goto 0
+	End if
+
+	</script>
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTISCCM.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Initialize the Zero Touch deployment process in SCCM
+' // 
+' // Usage:     cscript ZTISCCM.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//
+'//  Global constants
+'//
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTISCCM
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+	
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+
+	End Sub
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+	
+	
+	Function Main
+
+		Dim iRetVal
+		Dim oDebug
+		Dim sCmd
+		Dim sBootstrap, sTSPath, sFile, sParms
+		Dim oDrive
+		Dim bTSInProgress
+		Dim oAccount
+		Dim sBddrun
+		Dim sArchiveDir
+		Dim sArchitecture
+
+
+		iRetVal = Success
+
+
+		'//----------------------------------------------------------------------------
+		'//  If debugging, create flag files
+		'//----------------------------------------------------------------------------
+
+		If oLogging.Debug then
+
+			On Error Resume Next
+
+			Set oDebug = oFSO.OpenTextFile(Left(oUtility.LogPath, 2) & "\OSD.Debug", ForAppending, True)
+			oDebug.WriteLine "OSD.Debug"
+			oDebug.Close
+
+			Set oDebug = oFSO.OpenTextFile(Left(oUtility.LogPath, 2) & "\MININT\Archive_OSD.sms", ForAppending, True)
+			oDebug.WriteLine "Archive_OSD.sms"
+			oDebug.Close
+
+			On Error Goto 0
+
+		End if
+
+		' Clean up MININT folder if it exists
+		For each oDrive in oFSO.Drives
+			If oDrive.DriveType = 2 and oDrive.DriveLetter<>"X" then
+				If oDrive.IsReady Then
+					If OFSO.FolderExists(ODrive.DriveLetter & ":\MININT") then
+						On Error Resume Next
+						oFSO.DeleteFolder oDrive.DriveLetter & ":\MININT", true
+						On Error Goto 0
+
+						Exit For
+					End if
+				End If
+			End if
+		Next
+
+
+
+		'//----------------------------------------------------------------------------
+		'//  Set the DeployRoot and ScriptRoot based on where we were started from
+		'//----------------------------------------------------------------------------
+
+		' Figure out the architecture from the environment
+
+		If oEnv("PROCESSOR_ARCHITEW6432") <> "" then
+			If UCase(oEnv("PROCESSOR_ARCHITEW6432")) = "AMD64" then
+				sArchitecture = "X64"
+			Else
+				sArchitecture = UCase(oEnv("PROCESSOR_ARCHITEW6432"))
+			End if
+		ElseIf UCase(oEnv("PROCESSOR_ARCHITECTURE")) = "AMD64" then
+			sArchitecture = "X64"
+		Else
+			sArchitecture = UCase(oEnv("PROCESSOR_ARCHITECTURE"))
+		End if
+
+
+		oEnvironment.Item("ScriptRoot") = oFSO.GetParentFolderName(WScript.ScriptFullName)
+		oLogging.CreateEntry "ScriptRoot = " & oEnvironment.Item("ScriptRoot"), LogTypeInfo
+
+		oEnvironment.Item("DeployRoot") = oFSO.GetParentFolderName(oEnvironment.Item("ScriptRoot"))
+		oLogging.CreateEntry "DeployRoot = " & oEnvironment.Item("DeployRoot"), LogTypeInfo
+
+		oEnvironment.Item("ToolRoot") = oEnvironment.Item("DeployRoot") & "\Tools\" & sArchitecture
+		oLogging.CreateEntry "ToolRoot = " & oEnvironment.Item("ToolRoot"), LogTypeInfo
+
+		oLogging.CreateEntry "DeployRoot = " & oEnvironment.Item("DeployRoot"), LogTypeInfo
+
+		oEnvironment.Item("ResourceRoot") = oEnvironment.Item("DeployRoot")
+		oLogging.CreateEntry "ResourceRoot = " & oEnvironment.Item("ResourceRoot"), LogTypeInfo
+		If Instr(oEnvironment.Item("DeployRoot"),":\") OR OEnvironment.GetOSDV4("_SMSTSMDATAPATH")<> "" Then
+		
+			If oFSO.FolderExists(oEnvironment.GetOSDV4("_SMSTSMDataPath") &  "\WDPackage") <> True Then
+			
+				oFSO.Copyfolder oEnvironment.Item("DeployRoot"),oEnvironment.GetOSDV4("_SMSTSMDataPath") &  "\WDPackage"
+				wscript.sleep 30000
+				
+			End if
+			
+			oEnvironment.Item("ScriptRoot") = oEnvironment.GetOSDV4("_SMSTSMDataPath") &  "\WDPackage\Scripts"
+			oLogging.CreateEntry "ScriptRoot = " & oEnvironment.Item("ScriptRoot"), LogTypeInfo
+
+			oEnvironment.Item("DeployRoot") = oFSO.GetParentFolderName(oEnvironment.Item("ScriptRoot"))
+			oLogging.CreateEntry "DeployRoot = " & oEnvironment.Item("DeployRoot"), LogTypeInfo
+
+			oEnvironment.Item("ToolRoot") = oEnvironment.Item("DeployRoot") & "\Tools\" & sArchitecture
+			oLogging.CreateEntry "ToolRoot = " & oEnvironment.Item("ToolRoot"), LogTypeInfo
+
+			oEnvironment.Item("ResourceRoot") = oEnvironment.Item("DeployRoot")
+			oLogging.CreateEntry "ResourceRoot = " & oEnvironment.Item("ResourceRoot"), LogTypeInfo
+			
+		End if
+
+		' Set the package ID that we are running from (promote to global)
+
+		oEnvironment.Item("BDDPackageID") = oEnvironment.Item("BDDPackageID")
+		oLogging.CreateEntry "BDDPackageID = " & oEnvironment.Item("BDDPackageID"), LogTypeInfo
+
+
+		' Log the data path and logging path
+
+		oLogging.CreateEntry "LocalRootPath = " & oUtility.LocalRootPath, LogTypeInfo
+		oLogging.CreateEntry "LogPath = " & oUtility.LogPath, LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------
+		'//  Gather information
+		'//----------------------------------------------------------------------------
+
+		oEnvironment.Item("DeploymentMethod") = "SCCM"
+		oLogging.CreateEntry "DeploymentMethod = " & oEnvironment.Item("DeploymentMethod"), LogTypeInfo
+
+		If oEnvironment.Item("DeploymentType") = "" then
+
+			If oEnv("SystemDrive") = "X:" then
+
+				oEnvironment.Item("DeploymentType") = "NEWCOMPUTER"
+
+			ElseIf oFSO.FileExists(oUtility.ScriptDir & "\OldComputer.tag") then
+
+				oEnvironment.Item("DeploymentType") = "REPLACE"
+
+			Else
+
+				oEnvironment.Item("DeploymentType") = "REFRESH"
+
+			End if
+
+		End if
+
+
+		' Reset the Destination Logical Drive ( Drive letter may have changed after rebooting )
+
+		oUtility.ClearRelativeDriveLetters
+		oUtility.GetOSTargetDriveLetterEx False
+
+
+		oLogging.CreateEntry "DeploymentType = " & oEnvironment.Item("DeploymentType"), LogTypeInfo
+		oLogging.CreateEntry "Phase = " & oEnvironment.Item("Phase"), LogTypeInfo
+
+
+		' Set the start time in GMT if not already set
+
+		If oEnvironment.Item("OSDStartTime") = "" then
+
+			Dim timeBias
+			Dim timeUTC
+			Dim timeBranding
+
+
+			' Get current time in UTC
+
+			timeBias = oShell.RegRead("HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\TimeZoneInformation\ActiveTimeBias")
+			timeUTC = DateAdd("n", timeBias, Now())
+
+
+			' Save the time
+
+			timeBranding = Year(timeUTC) & "-" & _
+				Right( "0" & Month(timeUTC), 2)  & "-" & _
+				Right( "0" & Day(timeUTC), 2)    & " " & _
+				Right( "0" & Hour(timeUTC), 2)   & ":" & _
+				Right( "0" & Minute(timeUTC), 2) & ":" & _
+				Right( "0" & Second(timeUTC), 2) & "Z"
+
+			oEnvironment.Item("OSDStartTime") = timeBranding
+
+		End if
+
+
+		' Enable DaRT remote control (for Windows PE)
+
+		EnableDaRT
+
+	End Function
+
+	Sub EnableDaRT
+
+		Dim tries
+		Dim oInv
+		Dim oTicketNode
+		Dim oIPNode
+		Dim dicPortList
+		Dim dicIPList
+
+		
+		' Remote control is only supported in Windows PE (don't use OSVersion as it isn't set yet for refresh)
+
+		If oEnv("SystemDrive") <> "X:" then
+			Exit Sub
+		End if
+
+
+		' Don't start remote control if it has already been started
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\System32\inv32.xml") then
+			Exit Sub
+		End if
+
+
+		' Initialize
+
+		Set dicIPList = CreateObject("Scripting.Dictionary")
+		Set dicPortList = CreateObject("Scripting.Dictionary")
+
+
+		' Make sure the executable exists
+
+		If not oFSO.FileExists(oEnv("SystemRoot") & "\System32\RemoteRecovery.exe") then
+			Exit Sub
+		End if
+
+
+		' Start remote recovery process
+
+		oShell.CurrentDirectory = oEnv("SystemRoot") & "\System32"
+		oShell.Run oEnv("SystemRoot") & "\System32\RemoteRecovery.exe -nomessage", 2, false
+
+
+		' Sleep until we see the inv32.xml file
+
+		tries = 0
+		Do
+			WScript.Sleep 1000
+			tries = tries + 1
+		Loop While not oFSO.FileExists(oEnv("SystemRoot") & "\System32\inv32.xml") and tries < 10
+
+		If not oFSO.FileExists(oEnv("SystemRoot") & "\System32\inv32.xml") then
+			oLogging.CreateEntry "Unable to find the inv32.xml file, DaRT remote control is not running.", LogTypeInfo
+			Exit Sub
+		End if
+
+
+		' Read the XML file and put the values into variables
+
+		On Error Resume Next
+
+		Set oInv = oUtility.CreateXMLDOMObjectEx(oEnv("SystemRoot") & "\System32\inv32.xml")
+		Set oTicketNode = oInv.SelectSingleNode("//A")
+		oEnvironment.Item("DartTicket") = oTicketNode.Attributes.getNamedItem("ID").value
+
+		' First get the IPv4 entries (skipping locally-administered ones)
+		For each oIPNode in oInv.SelectNodes("//L")
+			If Instr(oIPNode.Attributes.getNamedItem("N").value, ":") = 0 and Left(oIPNode.Attributes.getNamedItem("N").value, 4) <> "169." then
+				dicIPList.Add oIPNode.Attributes.getNamedItem("N").value, ""
+				dicPortList.Add oIPNode.Attributes.getNamedItem("P").value, ""
+			End if
+		Next
+
+		' Then add the IPv6 entries
+		For each oIPNode in oInv.SelectNodes("//L")
+			If Instr(oIPNode.Attributes.getNamedItem("N").value, ":") > 0 then
+				dicIPList.Add oIPNode.Attributes.getNamedItem("N").value, ""
+				dicPortList.Add oIPNode.Attributes.getNamedItem("P").value, ""
+			End if
+		Next
+		oEnvironment.ListItem("DartIP") = dicIPList
+		oEnvironment.ListItem("DartPort") = dicPortList
+
+	End Sub
+
+
+End Class	
+
+	</script>
+</job>

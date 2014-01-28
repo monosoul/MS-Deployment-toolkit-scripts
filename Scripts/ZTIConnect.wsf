@@ -1,0 +1,82 @@
+<job id="ZTIConnect">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIConnect.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Solution Accelerator for Business Desktop Deployment
+' // 
+' // Usage:     cscript ZTIConnect.wsf /uncpath:<uncpath> [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+Const ANSWER_TO_LIFE_THE_UNIVERSE_AND_EVERYTHING = 42
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIConnect
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+
+		iRetVal = Success
+
+
+		' Map a drive to the specified UNC
+
+		If oUtility.ValidateConnection(oUtility.Arguments("UNCPath")) = Success then
+			oLogging.CreateEntry "Successfully connected to " & oUtility.Arguments("UNCPath"), LogTypeInfo
+		Else
+			iRetVal = Failure
+			oLogging.CreateEntry "Unable to connect to " & oUtility.Arguments("UNCPath"), LogTypeWarning
+		End If
+
+
+		Main = iRetVal
+
+	End Function
+
+End Class
+
+   </script>
+</job>

@@ -1,0 +1,154 @@
+<job id="ZeroTouchInstallation">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIDisableBDEProtectors.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   If Bitlocker is enabled this will suspend
+' //            the BDE protectors configured on the system
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIDisableBDEProtectors.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIDisableBDEProtectors
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public objWMIBDE
+	Public colEnVol
+	Public objEncVol
+	Public ColPS
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+	Function Main
+		Dim Regpath
+		Dim iRetVal
+
+		iRetVal = SUCCESS
+		
+		DIm strStatusData, sEncryptionProgress, sCDriveEncryptionStatus, strConnectionStr1
+		On Error Resume Next
+		   strConnectionStr1 = "winmgmts:{impersonationLevel=impersonate,authenticationLevel=pktPrivacy}!root\cimv2\Security\MicrosoftVolumeEncryption"  
+			If Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.0" then  ' If Vista or Server 2008 check for Bitlocker and remove the protectors
+				' Connect to the Bitlocker WMI object
+				On Error resume Next
+				Set objWMIBDE = GetObject(strConnectionStr1)
+				If Err.Number <> 0 Then 
+					strStatusData = "Unable to connect  to Bitlocker WMI Object -  bitlocker not installed"
+					oLogging.CreateEntry strStatusData, LogTypeInfo
+					iRetVal = Success
+					Main = iRetVal
+					On Error Goto 0
+					Exit Function
+				Else 
+					oLogging.CreateEntry "Connection succeeded to MicrosoftVolumeEncryption", LogTypeInfo
+				End If
+				on error goto 0
+				err.clear
+			
+				' get the encrypted volumes?
+				If Left(oEnvironment.Item("OSCURRENTVERSION"),3) = "6.0" Then
+					Set colEnVol = objWMIBDE.ExecQuery("Select * from Win32_EncryptableVolume")
+				ElseIf Left(OEnvironment.Item("OSCURRENTVERSION"),3) >= "6.1" Then
+					Set colEnVol = objWMIBDE.ExecQuery("Select * from Win32_EncryptableVolume where ProtectionStatus<>0")
+				End If
+				If colEnVol.count > 0 then
+					' Loop through and disable the protectors
+					For Each objEncVol in colEnVol
+
+						oLogging.CreateEntry "Disable Key Protectors on drive: " & objEncVol.DriveLetter, LogTypeInfo
+						If Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.2" then
+							objEncVol.DisableKeyProtectors(0)
+						Else
+							objEncVol.DisableKeyProtectors
+						End if
+						If Left(oEnvironment.Item("ImageBuild"),3) = "6.0" Or oEnvironment.Item("OSVersion") = "2008" or oEnvironment.Item("OSVersion") = "2008R2" Then
+							oLogging.CreateEntry "Deploying Windows Vista or Server 2008 or the Current OS is 2008 or 2008R2, Decrypting the drive",LogTypeInfo
+							objEncVol.Decrypt
+							WaitforDecryptionCompletion
+							'Since the volume is decrypted ISBDE should be set to false
+							oEnvironment.Item("ISBDE") = "FALSE"
+							Main = iRetVal
+							Exit Function
+						End If
+						oEnvironment.Item("ISBDE") = "TRUE"
+					Next
+				Else
+					oLogging.CreateEntry "There are no encrypted drives", LogTypeInfo
+					oEnvironment.Item("ISBDE") = "FALSE"
+				End if
+			End if
+		on error goto 0	
+		Main = iRetVal
+
+	End Function
+
+	Function WaitForDecryptionCompletion ()
+		Dim iRetVal
+		Dim PercentageLast
+		Dim Status, Percentage
+
+		do 
+
+			iRetVal = objEncVol.GetConversionStatus(Status, Percentage)
+			If iRetVal <> 0 then
+				oLogging.CreateEntry "objEncVol.GetConversionStatus returned non-zero value: " & iRetVal, LogTypeWarning
+				exit do
+			End if
+
+			If Status <> 3 then
+				oLogging.CreateEntry "Get Conversion Status: " & Status, LogTypeInfo
+				exit do
+			End if
+
+			If Percentage <> PercentageLast then
+				oLogging.ReportProgress "Bitlocker Drive Decryption in Progress", Percentage            
+				If Percentage = (Percentage \ 10) * 10 then
+					oLogging.CreateEntry "Bitlocker Drive Decryption in Progress: " & Percentage, LogTypeInfo
+				End if 
+				PercentageLast = Percentage
+			End if 
+
+			Wscript.sleep 1000
+
+		loop until FALSE
+			
+
+	End Function
+
+End Class
+   </script>
+</job>

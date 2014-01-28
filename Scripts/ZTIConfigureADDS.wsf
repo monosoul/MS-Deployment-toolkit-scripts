@@ -1,0 +1,379 @@
+<job id="ZTIConfigureADDS">
+<script language="VBScript" src="ZTIUtility.vbs" />
+<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIConfigureADDS.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Run DCPromo to create a new domain controller
+' // 
+' // Usage:     cscript ZTIConfigureADDS.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+
+'//----------------------------------------------------------------------------
+'//
+'//  Global constant and variable declarations
+'//
+'//----------------------------------------------------------------------------
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIConfigureADDS
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetval
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim TreeOrChild
+		Dim CreateOrJoin
+		Dim oCANSFile
+		Dim sAnsPath
+
+		iRetVal = SUCCESS
+
+		' Main script processing
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+
+
+
+		sAnsPath = oEnv("Temp") & "\AD_Answer.txt"
+		Set oCANSFile = oFSO.CreateTextFile(sAnsPath,true,False)
+
+
+		' ---------------------------------------------------------------------------
+		' Abort If there is nothing to do at this point
+		' ---------------------------------------------------------------------------
+
+		If oEnvironment.Item("OSVersion") = "WinPE" then
+			oLogging.ReportFailure "ERROR - This script should only run in the full OS.", 7100
+		End If
+
+		If (oEnvironment.Item("ReplicaOrNewDomain") = "" ) then
+			oLogging.ReportFailure "ERROR - Not enough values supplied for generating DCPromo answer file", 7101
+		End If
+
+
+		' ---------------------------------------------------------------------------
+		' Build the answer file
+		' ---------------------------------------------------------------------------
+
+		oLogging.CreateEntry "Generating DCPromo answer file", LogTypeInfo
+
+		oLogging.CreateEntry "OSCurrentVersion = [" & oEnvironment.Item("OSCurrentVersion") & "]", LogTypeInfo
+
+		' Standard header
+
+		oCANSFile.WriteLine "[DCInstall]"
+
+
+		' Write the database paths, if specified
+
+		If oEnvironment.Item("DatabasePath") <> "" then
+			If Left(oEnvironment.Item("OSCurrentVersion"),1) >= "6" then
+				oCANSFile.WriteLine "DatabasePath = " & oEnvironment.Item("DatabasePath")
+			Else
+				oCANSFile.WriteLine "DBPath = " & oEnvironment.Item("DatabasePath")
+			End If
+		End If
+		If oEnvironment.Item("ADDSLogPath") <> "" then
+			oCANSFile.WriteLine "LogPath = " & oEnvironment.Item("ADDSLogPath")
+		End If
+		If oEnvironment.Item("SysVolPath") <> "" then
+			oCANSFile.WriteLine "SysVolPath = " & oEnvironment.Item("SysVolPath")
+		End If
+
+
+		' Prevent rebooting
+
+		oCANSFile.WriteLine "RebootOnSuccess = NoAndNoPromptEither"
+
+
+		' Write the recovery password
+
+		If oEnvironment.Item("SafeModeAdminPassword") <> "" then
+			oCANSFile.WriteLine "SafeModeAdminPassword = " & oEnvironment.Item("SafeModeAdminPassword")
+		End If
+
+
+		' Write the site name
+
+		If oEnvironment.Item("SiteName") <> "" then
+			oCANSFile.WriteLine "SiteName  = " & oEnvironment.Item("SiteName")
+		End If
+
+
+		' Write the appropriate entries based on what was requested
+
+		If oEnvironment.Item("ReplicaOrNewDomain") = "Replica" or oEnvironment.Item("ReplicaOrNewDomain") = "ReadOnlyReplica" then
+
+			' Make sure mandatory properties are specified
+
+			If oEnvironment.Item("ReplicaDomainDNSName") = "" OR oEnvironment.Item("ADDSUserName") = "" OR oEnvironment.Item("ADDSPassword")= "" OR oEnvironment.Item("ADDSUserDomain") = "" then
+				oLogging.ReportFailure "ERROR - Mandatory properties for creating a new replica DC were not specified", 7102
+			End If
+
+
+			' If ReadOnlyReplica is specified, this needs to be Windows Server 2008 or higher
+
+			If oEnvironment.Item("ReplicaOrNewDomain") = "ReadOnlyReplica" and Left(oEnvironment.Item("OSCurrentVersion"), 3) < "6.0" then
+				oLogging.CreateEntry "WARNING - Windows Server 2008 or higher is required for a read-only replica, creating a normal DC instead", LogTypeWarning
+				oEnvironment.Item("ReplicaOrNewDomain") = "Replica"
+			End If
+
+
+			' Write properties needed for a replica
+
+			oCANSFile.WriteLine "ReplicaOrNewDomain = " & oEnvironment.Item("ReplicaOrNewDomain")
+			oCANSFile.WriteLine "ReplicaDomainDnsName = " & oEnvironment.Item("ReplicaDomainDNSName")
+			If oEnvironment.Item("ReplicationSourceDC") <> "" then
+				oCANSFile.WriteLine "ReplicationSourceDC = " & oEnvironment.Item("ReplicationSourceDC")
+			End If
+			oCANSFile.WriteLine "UserName = " & oEnvironment.Item("ADDSUserName")
+			oCANSFile.WriteLine "UserDomain = " & oEnvironment.Item("ADDSUserDomain")
+			oCANSFile.WriteLine "Password = " & oEnvironment.Item("ADDSPassword")
+
+			'oCANSFile.WriteLine "CriticalReplicationOnly = Yes"
+			'oCANSFile.WriteLine "AllowAnonymousAccess = No"
+
+			If (oEnvironment.Item("ConfirmGC") <> "") then
+				oCANSFile.WriteLine "ConfirmGC = " & oEnvironment.Item("ConfirmGC")
+			End If
+
+			' Write DNS properties
+
+			If Left(oEnvironment.Item("OSCurrentVersion"),1) >= "6" then
+				oCANSFile.WriteLine "InstallDNS = " & oEnvironment.Item("AutoConfigDNS")
+			Else
+				oCANSFile.WriteLine "AutoConfigDNS = " & oEnvironment.Item("AutoConfigDNS")
+			End If
+
+			'oCANSFile.WriteLine "DNSOnNetwork = No"
+			'oCANSFile.WriteLine "DNSDelegation = No"
+
+		Else  ' New domain
+
+			' Indicate that we're creating a domain
+
+			oCANSFile.WriteLine "ReplicaOrNewDomain = Domain"
+
+
+			' Determine the right values
+
+			If oEnvironment.Item("NewDomain") = "Forest" then
+				TreeOrChild = "Tree"
+				CreateOrJoin = "Create"
+			ElseIf oEnvironment.Item("NewDomain") = "Tree" then
+				TreeOrChild = "Tree"
+				CreateOrJoin = "Join"
+			ElseIf oEnvironment.Item("NewDomain") = "Child" then
+				TreeOrChild = "Child"
+				CreateOrJoin = "Join"
+			End If
+
+
+			' Write DNS properties
+
+			If Left(oEnvironment.Item("OSCurrentVersion"),1) >= "6" then
+				oCANSFile.WriteLine "InstallDNS = " & oEnvironment.Item("AutoConfigDNS")
+			Else
+				oCANSFile.WriteLine "AutoConfigDNS = " & oEnvironment.Item("AutoConfigDNS")
+			End If
+			'oCANSFile.WriteLine "DNSOnNetwork = No"
+			'oCANSFile.WriteLine "DNSDelegation = No"
+
+
+			' Write properties needed in all cases
+
+			oCANSFile.WriteLine("DomainNetBIOSName = " & oEnvironment.Item("DomainNetBiosName"))
+
+			If Left(oEnvironment.Item("OSCurrentVersion"),1) >= "6" then
+				oCANSFile.WriteLine "NewDomain = "& oEnvironment.Item("NewDomain")
+			Else
+				oCANSFile.WriteLine "TreeOrChild = " & TreeOrChild
+			End If
+
+
+			' Write the domain level domain level
+
+			oCANSFile.WriteLine "DomainLevel = "& oEnvironment.Item("DomainLevel")
+
+
+			' Write type-specific properties
+
+			If TreeOrChild = "Child" then   'Child domain
+
+				' Make sure mandatory properties are specified
+
+				If (oEnvironment.Item("ChildName") = "" OR oEnvironment.Item("ParentDomainDNSName") = "" OR  oEnvironment.Item("ADDSUserName") = "" OR oEnvironment.Item("ADDSPassword") = "" OR oEnvironment.Item("ADDSUserDomain") = "") then
+					oLogging.ReportFailure "ERROR - Mandatory properties for creating a new child domain were not specified", 7103
+				End If
+
+
+				' Write child-specific properties
+
+				oCANSFile.WriteLine "ChildName = " & oEnvironment.Item("ChildName")
+				oCANSFile.WriteLine "ParentDomainDNSName = " & oEnvironment.Item("ParentDomainDNSName")
+				oCANSFile.WriteLine "UserName = " & oEnvironment.Item("ADDSUserName")
+				oCANSFile.WriteLine "UserDomain = " & oEnvironment.Item("ADDSUserDomain")
+				oCANSFile.WriteLine "Password = " & oEnvironment.Item("ADDSPassword")
+
+				' TODO: Needed or supported for Server 2003 and 2008?
+				oCANSFile.WriteLine "ReplicationSourceDC = " & oEnvironment.Item("ReplicationSourceDC")
+
+			ElseIf (TreeOrChild = "Tree" AND CreateOrJoin = "Create") then   'New forest
+
+				' Make sure mandatory properties are specified
+
+				If oEnvironment.Item("NewDomainDNSName") = "" then
+					oLogging.ReportFailure "ERROR - Mandatory properties for creating a new forest were not specified", 7104
+				End If
+
+
+				' Write forest-specific properties
+
+				If Left(oEnvironment.Item("OSCurrentVersion"),1) >= "6" then
+					oCANSFile.WriteLine "ForestLevel = "& oEnvironment.Item("ForestLevel")
+				Else
+					oCANSFile.WriteLine "CreateOrJoin = " & CreateOrJoin
+					If oEnvironment.Item("ForestLevel") >= "2" then  ' Force to 2003, otherwise default to 2000
+						oCANSFile.WriteLine "SetForestVersion = Yes"
+					End If
+				End If
+				oCANSFile.WriteLine "NewDomainDNSName = " & oEnvironment.Item("NewDomainDNSName")
+
+
+			ElseIf (TreeOrChild = "Tree" AND CreateOrJoin = "Join") then   'Join Forest
+
+				' Make sure mandatory properties are specified
+
+				If (oEnvironment.Item("NewDomainDNSName") = "" OR oEnvironment.Item("ADDSUserName") = 	"" OR oEnvironment.Item("ADDSPassword") = "" OR oEnvironment.Item("ADDSUserDomain") = "") then
+					oLogging.ReportFailure "ERROR - Mandatory properties for creating a new forest were not specified", 7105
+				End If
+
+
+				' Write join-specific properties
+
+				oCANSFile.WriteLine "NewDomainDNSName = " & oEnvironment.Item("NewDomainDNSName")
+				oCANSFile.WriteLine "UserName = " & oEnvironment.Item("ADDSUserName")
+				oCANSFile.WriteLine "UserDomain = " & oEnvironment.Item("ADDSUserDomain")
+				oCANSFile.WriteLine "Password = " & oEnvironment.Item("ADDSPassword")
+				oCANSFile.WriteLine "ReplicationSourceDC = " & oEnvironment.Item("ReplicationSourceDC")
+
+			End If
+
+		End If
+
+		oCANSFile.Close
+
+
+		' ---------------------------------------------------------------------------
+		' Start the browser service
+		' ---------------------------------------------------------------------------
+
+		oShell.RegWrite "HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Browser\Start", 2, "REG_DWORD"
+		iRetval = oShell.Run("net start browser", 1, true)
+
+
+		' ---------------------------------------------------------------------------
+		' Run DCPROMO
+		' ---------------------------------------------------------------------------
+
+		Dim sCmd
+		
+		' Find dcpromo.exe.  First check system32, then sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\system32\dcpromo.exe") then
+			sCmd = "cmd /C " & oEnv("SystemRoot") & "\system32\dcpromo.exe /answer:" & sAnsPath
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\dcpromo.exe") then
+			sCmd = "cmd /C " & oEnv("SystemRoot") & "\sysnative\dcpromo.exe /answer:" & sAnsPath
+		Else
+			sCmd = "dcpromo.exe"
+		End if
+		oLogging.CreateEntry "About to execute command: " & sCmd, LogTypeInfo
+		
+		iRetval = oShell.Run(sCmd,1,true)
+
+		If Err then
+
+			iRetVal = Err.Number
+			oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+
+		Else
+
+			If iRetVal = 1 then
+
+				oLogging.CreateEntry "DCPromo configuration succeeeded, rc = " & iRetVal, LogTypeInfo
+				iRetVal = Success
+
+			ElseIf iRetVal = 2 then
+
+				oLogging.CreateEntry "DCPromo configuration succeeeded, reboot required, rc = " & iRetVal, LogTypeInfo
+				iRetVal = Success
+
+			ElseIf iRetVal = 4 then
+
+				oLogging.CreateEntry "DCPromo configuration succeeded with non-critical errors, rc = " & iRetVal & ", see %WINDIR%\Debug\DCPROMO.LOG for details, reboot required", LogTypeInfo
+				iRetVal = Success
+
+			Else
+
+				oLogging.CreateEntry "ERROR - ADDS role configuration with DCPromo failed , rc = " & iRetVal, LogTypeError
+
+			End If
+
+		End If
+
+		Main = iRetVal
+
+	End Function
+
+
+End class
+
+</script>
+</job>

@@ -1,0 +1,302 @@
+<job id="ZTIConfigureDNS">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIConfigureDNS.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Configure the DNS installed
+' // 
+' // Usage:	cscript ZTIConfigureDNS.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIConfigureDNS
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public iRetval
+	Public iErrorCount
+	Public sDnscmd
+
+	'//array for the zone details
+	Public arrCustomZoneDetails()
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		ReDim arrCustomZoneDetails(-1)
+		
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+	'//----------------------------------------------------------------------------
+	'// Main routine
+	'//----------------------------------------------------------------------------
+
+
+		' Local Variable declaration
+
+		Dim iResult
+		Dim sCmd
+
+
+		' Variables for DNS Zone creation
+
+		Dim oCustomZoneDetails
+		Dim strZoneType
+
+
+		' End of local variables declarations
+
+
+		iErrorCount = 0
+
+
+		' Find DNSCMD.exe.  First check system32, then sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\system32\dnscmd.exe") then
+			sDnscmd = oEnv("SystemRoot") & "\system32\dnscmd.exe"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\dnscmd.exe") then
+			sDnscmd = oEnv("SystemRoot") & "\sysnative\dnscmd.exe"
+		Else
+			sDnscmd = "dnscmd.exe"
+		End if
+
+
+		' Make sure we can issue commands
+
+		iRetval = RunAndLog(sDnscmd)
+		If iRetVal = -2147024894 Then
+			oLogging.ReportFailure "Unable to issue DNS commands", 7300
+		End If
+
+
+		' Set the server options
+
+		If UCase(oEnvironment.Item("DNSServerOptionDisableRecursion")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /norecursion 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /norecursion 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionBINDSecondaries")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /bindsecondaries 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /bindsecondaries 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionFailOnLoad")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /strictfileparsing 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /strictfileparsing 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionEnableRoundRobin")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /roundrobin 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /roundrobin 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionEnableNetmaskOrdering")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /localnetpriority 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /localnetpriority 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionEnableSecureCache")) = "TRUE" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /secureresponses 1")
+		Else
+			iRetVal = RunAndLog(sDnscmd & " . /config /secureresponses 0")
+		End if
+
+		If UCase(oEnvironment.Item("DNSServerOptionNameCheckFlag")) <> "" then
+			iRetVal = RunAndLog(sDnscmd & " . /config /namecheckflag " & oEnvironment.Item("DNSServerOptionNameCheckFlag"))
+		End if
+
+
+		' Load the zone details
+		TestAndLog GetZoneDetails(), "Unable to read the Zone Details - GetZoneDetails() failed"
+
+
+		' Create DNS zones
+
+		For each oCustomZoneDetails IN arrCustomZoneDetails
+
+			strZoneType = Lcase(oCustomZoneDetails.ZoneType)
+
+			oLogging.CreateEntry "Creating zone with name: " & oCustomZoneDetails.Name & ", type: " & strZoneTYpe , LogTypeInfo
+
+			Select case strZoneType
+			case "primary", "dsprimary"
+
+				sCmd = sDnscmd & " . /Zoneadd " & oCustomZoneDetails.Name & " /" & strZoneType
+				If strZoneType <> "dsprimary" and oCustomZoneDetails.FileName <> "" then
+					sCmd = sCmd & " /file " & oCustomZoneDetails.FileName
+				ElseIf strZoneType = "dsprimary" and oCustomZoneDetails.DirectoryPartition <> "" then
+					sCmd = sCmd & " /dp /" & oCustomZoneDetails.DirectoryPartition
+				End if
+				iRetval = RunAndLog(sCmd)
+
+				If (oCustomZoneDetails.Update = 0 OR oCustomZoneDetails.Update = 1 OR oCustomZoneDetails.Update = 2 ) then
+					iRetval = RunAndLog(sDnscmd & " . /Config " & oCustomZoneDetails.Name & " /allowupdate " & oCustomZoneDetails.Update)
+				End If
+
+			case "secondary", "stub", "dsstub"
+
+				If oCustomZoneDetails.MasterIP = "" THEN
+					oLogging.CreateEntry "Master IP address is required to configure secondary or stub zone", LogTypeError
+					iErrorCount = iErrorCount + 1
+				Else
+
+					sCmd = sDnscmd & " . /Zoneadd " & oCustomZoneDetails.Name & " /" & strZoneType & " " & oCustomZoneDetails.MasterIP
+					If strZoneType <> "dsstub" and oCustomZoneDetails.FileName <> "" then
+						sCmd = sCmd & " /file " & oCustomZoneDetails.FileName
+					ElseIf strZoneType = "dsstub" and oCustomZoneDetails.DirectoryPartition <> "" then
+						sCmd = sCmd & " /dp /" & oCustomZoneDetails.DirectoryPartition
+					End if
+
+					iRetval = RunAndLog(sCmd)
+				End If
+
+			End Select
+
+
+			' Enable record scavenging on specIfic DNS zones
+
+			If UCase(oCustomZoneDetails.Scavenge) = "TRUE" then
+				iRetval = RunAndLog(sDnscmd & " . /Config" & " " & oCustomZoneDetails.Name & " " & "/Aging 1")
+			Else
+				iRetval = RunAndLog(sDnscmd & " . /Config" & " " & oCustomZoneDetails.Name & " " & "/Aging 0")
+			End If
+
+		Next
+
+
+		' Check errors
+
+		If (iErrorCount = 0) THEN
+			oLogging.CreateEntry "DNS configuration successful", LogTypeInfo
+			Main = Success
+		Else
+			oLogging.CreateEntry "DNS configuration encountered " & iErrorCount & " errors", LogTypeError
+			Main = Failure
+		End If
+
+	End Function
+
+
+	Function RunAndLog(sCmd)
+
+		Dim iRetVal
+
+		On Error Resume Next
+		oLogging.CreateEntry "About to run: " & sCmd, LogTypeInfo
+		iRetval = oShell.Run(sCmd, 0, true)
+		If Err then
+			iErrorCount = iErrorCount + 1
+			iRetVal = Err.Number
+			If Err.Number = -2147024894 Then
+				oLogging.CreateEntry "DNSCMD not found or Windows Support Tools package is not installed. The script can not proceed further", LogTypeError
+			Else
+				oLogging.CreateEntry "ERROR executing command DNSCMD: " & Err.Description & " (" & Err.Number & ")", LogTypeError
+			End If
+		ElseIf (iRetval = 0) THEN
+			oLogging.CreateEntry "Command completed successfully, rc = 0", LogTypeInfo
+		Else
+			iErrorCount = iErrorCount + 1
+			oLogging.CreateEntry "Command was not successfull, rc = " & iRetVal, LogTypeInfo
+		End If
+
+		RunAndLog = iRetVal
+
+	End Function
+
+
+	Function GetZoneDetails
+
+		Dim oCustomZonedetails
+		Dim i
+		Dim re
+
+		Set re = New RegExp
+		re.Global = True
+		re.Pattern = ","
+
+
+		For i = 0 to 255
+
+			If oEnvironment.Item("DNSZones" & i & "Name") = "" then
+				oLogging.CreateEntry "End of DNSZones list, " & i & " entries found.", LogTypeInfo
+				Exit For
+			End if
+
+			Set oCustomZonedetails = New Customzonedetails
+			oCustomZonedetails.Name = oEnvironment.Item("DNSZones" & i & "Name")
+			oCustomZonedetails.ZoneType = oEnvironment.Item("DNSZones" & i & "Type")
+			oCustomZonedetails.MasterIP = oEnvironment.Item("DNSZones" & i & "MasterIP")
+			oCustomZonedetails.DirectoryPartition = oEnvironment.Item("DNSZones" & i & "DirectoryPartition")
+			oCustomZonedetails.FileName = oEnvironment.Item("DNSZones" & i & "FileName")
+			oCustomZonedetails.Scavenge = oEnvironment.Item("DNSZones" & i & "Scavenge")
+			oCustomZonedetails.Update = oEnvironment.Item("DNSZones" & i & "Update")
+			ReDim Preserve arrCustomZoneDetails(UBound(arrCustomZoneDetails) + 1)
+				Set arrCustomZoneDetails(UBound(arrCustomZoneDetails)) = oCustomZonedetails
+
+
+			' Replace commas with spaces
+
+			oCustomZonedetails.MasterIP = re.Replace(oCustomZonedetails.MasterIP, " ")
+
+		Next
+
+		GetZoneDetails = Success
+
+	End Function
+	
+End class
+
+
+Class Customzonedetails
+	Dim Name
+	Dim ZoneType
+	Dim MasterIP
+	Dim DirectoryPartition
+	Dim FileName
+	Dim Scavenge
+	Dim Update
+End class
+
+	</script>
+</job>

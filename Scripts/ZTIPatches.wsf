@@ -1,0 +1,513 @@
+<job id="ZTIPatches">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIConfigFile.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIPatches.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Adds the appropriate OS packages (language packs, security 
+' //            updates, etc.) to the unattend.xml for offline installation.
+' //            For Lite Touch deployments, the actual installation is 
+' //            performed by SETUP.EXE (calling DISM behind the scenes),
+' //            while with ConfigMgr this script is responsible for invoking
+' //            the appropriate tool to do that.
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIPatches.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIPatches
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	' Global ConfigFile object
+	Dim oXMLPackageList
+	
+	Dim dAllPackages
+	Dim sPlatform
+	Dim iDestUnique
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+
+		iDestUnique = 1
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim sUnattendXml, sUnattendDrive
+		Dim iRetVal
+		Dim oPatches
+		Dim oDrive
+
+
+		oLogging.CreateEntry oUtility.ScriptName & " Entered " & oEnvironment.Item("PHASE") & " state. Deployment Method = " & oEnvironment.Item("DeploymentMethod"), LogTypeInfo
+
+
+		' Make sure we have a place to put the Packages
+
+		oUtility.VerifyPathExists oUtility.LocalRootPath
+
+
+		' Turn on Drivers.log to get driver injection log
+		oUtility.RegWrite "HKLM\Software\Microsoft\Windows\CurrentVersion\Device Installer\DebugPkgMgr", 1
+
+
+		' Figure out the right platform to inject.  (The OSArchitecture variable is set during ConfigMgr 
+		' deployments based on the OS being installed.  It is set by the "Apply Operating System" step
+		' regardless of whether an OS image package or OS install package is being used.) 
+
+		If UCase(oEnvironment.Item("OSArchitecture")) = "AMD64" or UCase(oEnvironment.Item("OSArchitecture")) = "X64" or UCase(oEnvironment.Item("ImageProcessor")) = "X64" then
+			sPlatform = "amd64"
+		ElseIf UCase(oEnvironment.Item("ARCHITECTURE")) = "X64" then
+			sPlatform = "amd64"
+		Else
+			sPlatform = "x86"
+		End if
+		oLogging.CreateEntry "Operating system being deployed requires " & sPlatform & " updates.", LogTypeInfo
+
+
+		' Only perform package management tasks if we are in the correct state.
+
+		If UCase(oEnvironment.Item("PHASE")) = "PREINSTALL" then
+
+			oLogging.CreateEntry "Pre-Install setup installation state." , LogTypeInfo
+			
+		Elseif uCase(oEnvironment.Item("DeploymentMethod")) = "SCCM" then
+		
+			oLogging.CreateEntry "Config Mgr 2007 Patching state." , LogTypeInfo
+			
+		Else
+
+			oLogging.CreateEntry "No patching is required in the current phase." , LogTypeInfo
+			Main = Success
+			Exit Function
+
+		End if
+
+
+		' Find the Unattend.xml file.
+
+		sUnattendXml = empty
+		If oEnvironment.Item("OSDAnswerFilePath") = "" Then
+			iRetVal = oUtility.FindUnattendAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+		End If
+		IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePath")) = False Then
+			iRetVal = oUtility.FindUnattendAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+		End If		
+		IF Instr(1,oEnvironment.Item("OSDAnswerFilePath"),".xml",vbTextCompare) >0 then
+			sUnattendXML = oEnvironment.Item("OSDAnswerFilePath")
+		End If
+
+		If IsEmpty(sUnattendXml) then
+			oLogging.CreateEntry oUtility.ScriptName & " Unattend.xml file missing: " & sUnattendXml, LogTypeInfo
+			Main = Success
+			Exit function
+		End if
+		If not IsEmpty(sUnattendXml) then
+			sUnattendDrive = Left(sUnattendXml,2)
+		End If
+
+		' ---------------------------------------------------------------------------
+		' Find and Load the package groups (if present)
+		' ---------------------------------------------------------------------------
+
+		set oXMLPackageList = new ConfigFile
+		oXMLPackageList.bMustSucceed = false
+		oXMLPackageList.sFileType = "Packages"
+		oXMLPackageList.sGroupList = "PackageGroup"
+		oXMLPackageList.sSelectionProfile = oEnvironment.Item("PackageSelectionProfile")
+		oXMLPackageList.sCustomSelectionProfile = oEnvironment.Item("CustomPackageSelectionProfile")
+
+		oLogging.CreateEntry "Load XML....", LogTypeInfo
+		set dAllPackages = oXMLPackageList.FindAllItems
+		If dAllPackages.count = 0 then
+
+			' We didn't find packages.xml.  If we are in ConfigMgr, try to create one.
+			
+			If UCase(oEnvironment.Item("DeploymentMethod")) = "SCCM" then
+			
+				' In the ConfigMgr case
+				oLogging.CreateEntry "Packages.xml not found.  Creating Packages.xml",LogTypeInfo
+				CreatePackagesXML
+				
+				set oXMLPackageList = nothing
+				set oXMLPackageList = new ConfigFile
+				oXMLPackageList.bMustSucceed = false
+				oXMLPackageList.sFileType = "Packages"
+				oXMLPackageList.sGroupList = "PackageGroup"
+				
+			End if
+
+
+			'
+			' If we can't find Packages.xml at this point, log it.  We may still need to call
+			' DISM to inject drivers, so this isn't a fatal error.  (It would happen with
+			' Lite Touch if the administrator hasn't yet imported any patches.)
+			'
+			
+			set dAllPackages = oXMLPackageList.FindAllItems
+			If dAllPackages.count =  0then
+				oLogging.CreateEntry "Unable to find the Packages.xml file, assuming there are no packages to inject.", LogTypeInfo
+			End if
+
+		End if
+
+		' ---------------------------------------------------------------------------
+		' Install all "HotFix" patches
+		' ---------------------------------------------------------------------------
+
+		oLogging.CreateEntry "Adding non-language pack entries to unattend.xml", LogTypeInfo
+		set oPatches = oXMLPackageList.FindItemsEx("//*/*[PackageType != 'LanguagePack' and ProcessorArchitecture = '" & sPlatform & "' and " & oXMLPackageList.XPathFilterString( TRUE, empty)  & "]")
+		If oPatches.count > 0 then
+			If not BuildXML(sUnattendXml, oPatches.Keys) then
+				Exit function
+			End if
+		End if
+
+		' Install specified language packs
+
+		oLogging.CreateEntry "Adding language pack entries to unattend.xml", LogTypeInfo
+		If not BuildXML(sUnattendXml, oEnvironment.ListItem("LanguagePacks")) then
+			Exit function
+		End if
+		oLogging.CreateEntry "Language pack entries added to unattend.xml successfully", LogTypeInfo
+
+
+		' Clean up the packages.xml file created for SCCM, if it exists
+		
+		If oFSO.FileExists(oUtility.LocalRootPath & "\packages.xml") Then
+			oFSO.DeleteFile(oUtility.LocalRootPath & "\packages.xml")
+		End if
+
+
+		' For ConfigMgr, run DISM to install language packs and hotfixes and to inject drivers
+
+		If UCase(oEnvironment.Item("DeploymentMethod")) = "SCCM" and Instr(1,sUnattendxml,"Windows\Panther\unattend", 1) then
+			iRetVal = RunDISM(sUnattendDrive, sUnattendXml)
+			TestAndLog iRetVal, "Offline servicing using DISM" 
+		End if
+
+		Main = Success
+
+	End Function
+
+
+	' Given the path to a remote package, copy locally and return the short path name
+	Function PreparePackageLocally( FullPathToPackage )
+
+		Dim sDest, sDestPath
+
+		' Copy Locally
+
+		sDestPath = oUtility.LocalRootPath & "\Packages\Package_" &  right("0000" & iDestUnique,4)
+		iDestUnique = iDestUnique + 1
+		sDest = sDestPath & "\" & oFso.GetFileName(FullPathToPackage)
+
+		oLogging.CreateEntry "Copying package from " & FullPathToPackage & " to " & sDestPath, LogTypeInfo
+		oUtility.VerifyPathExists sDestPath
+
+		oFileHandling.CopyFile FullPathToPackage, sDestPath & "\", true
+
+		' Generate the short path name (256 character limitation of Pkgmgr.exe)
+
+		PreparePackageLocally = oFso.GetFile( sDest ).ShortPath
+
+		If Ucase(oEnvironment.Item("DeploymentMethod")) <> "SCCM" Then
+
+			' Remove LocalRootPath, and replace with %SystemDrive%
+			If Mid(PreparePackageLocally,2,2) = ":\" then
+				PreparePackageLocally = "%SystemDrive%" & Mid(PreparePackageLocally,3)
+			End if
+			
+		End if
+
+	End function
+
+
+	Function CopyServicingLocally
+
+		Dim sDestPath
+		sDestPath = oUtility.LocalRootPath & "\Servicing"
+
+		If not oFSO.FolderExists ( sDestPath ) then
+
+			oUtility.VerifyPathExists sDestPath
+			oFileHandling.CopyFolder oEnvironment.Item("DeployRoot") & "\Servicing\" & oEnvironment.Item("Architecture"), sDestPath, true
+
+		Else
+			oLogging.CreateEntry oUtility.ScriptName & " No copying needed, " & sDestPath & " already exists locally.", LogTypeInfo
+		End if
+
+		CopyServicingLocally = True
+
+	End Function
+
+
+	Function BuildXML( XMLFile, PatchGUIDs )
+
+		Dim xmlDoc, oServicingRoot, oPackageRoot, oAssembly, oSource, oPackage
+		Dim item, PatchGUID, count, f, fIsoServicingExisting
+		Dim RelativePathToPackage
+
+		Set xmlDoc = outility.CreateXMLDOMObjectEx( XMLFile )
+
+		BuildXML = TRUE
+
+		fIsoServicingExisting = TRUE
+		set oServicingRoot =  xmlDoc.selectSingleNode( "//unattend/servicing" )
+
+		If oServicingRoot is nothing then
+			fIsoServicingExisting = false
+			Set oServicingRoot = xmlDoc.createElement("servicing")
+
+		ElseIf Not oServicingRoot.hasChildNodes() Then
+			oServicingRoot.parentNode.removeChild oServicingRoot
+
+			fIsoServicingExisting = false
+			Set oServicingRoot = xmlDoc.createElement("servicing")
+
+		Else
+			xmlDoc.documentElement.insertBefore oServicingRoot, xmlDoc.documentElement.childNodes.item(0)
+		End if
+
+		count = 0
+		For each PatchGUID in PatchGUIDs
+
+			oLogging.CreateEntry "Add package " & PatchGUID, LogTypeInfo
+
+			' Make sure the package exists
+			
+			If PatchGUID <> "DEFAULT" then
+			
+				If not dAllPackages.exists(PatchGUID)  then
+					oLogging.CreateEntry vbTab & "The package (patch) GUID " & PatchGUID & " does not exist.", LogTypeError
+				Else
+
+					set oPackage = dAllPackages.Item(PatchGUID)
+					
+					Set oAssembly = xmlDoc.createElement("assemblyIdentity")
+					oAssembly.setAttribute "name" , oUtility.SelectSingleNodeString(oPackage, "./ProductName" )
+					For each item in array("Version","ProcessorArchitecture","PublicKeyToken","Language")
+						oAssembly.setAttribute lcase(left(item,1)) & mid(item,2) , oUtility.SelectSingleNodeString(oPackage,"./" & item )
+					Next
+
+
+					Set oSource = xmlDoc.createElement("source")
+					item = oUtility.SelectSingleNodeString(oPackage,"./Source" )
+
+						If Left(item, 1) = "." then
+							RelativePathToPackage = mid ( item, instr(1, item, "\Packages\", vbTextCompare) )
+							RelativePathToPackage = oEnvironment.Item("ResourceRoot") & RelativePathToPackage
+						else
+							' Otherwise assume path is absolute
+							RelativePathToPackage = item
+						end if
+
+					If not oFSO.FileExists(RelativePathToPackage) then
+						oLogging.CreateEntry oUtility.ScriptName & " Package path not found: " & RelativePathToPackage, LogTypeError
+						BuildXML = FALSE
+						Exit function
+					End if
+
+					oSource.setAttribute "location", RelativePathToPackage
+
+					If oEnvironment.Item("DeploymentMethod") = "SCCM" Then
+						'Copy packages to another location for download on demand so that the packages don't get deleted
+						oSource.setAttribute "location", PreparePackageLocally(RelativePathToPackage)
+					End if
+
+					Set oPackageRoot = xmlDoc.createElement("package")
+					oPackageRoot.setAttribute "action", "install"
+					oPackageRoot.AppendChild oAssembly
+					oPackageRoot.AppendChild oSource
+
+					oServicingRoot.AppendChild oPackageRoot
+
+					count = count + 1
+
+					oLogging.CreateEntry "Package " & PatchGUID & " added.", LogTypeInfo
+
+				End if
+
+			End if
+
+		Next
+
+		If count = 0 then
+			oLogging.CreateEntry "Nothing to save, exit.", LogTypeInfo
+			Exit function
+		End if
+
+		If not fIsoServicingExisting then
+			xmlDoc.documentElement.insertBefore oServicingRoot, xmlDoc.documentElement.childNodes.item(0)
+		End if
+
+
+		' Remove extra xmlns="" entry and save the XML
+		oLogging.CreateEntry "Ready to Save!", LogTypeInfo
+
+		Set f = oFso.CreateTextFile( XMLFile, TRUE )
+		f.Write Replace( xmlDoc.xml, " xmlns=""""", "" , vbTextCompare)
+		f.Close
+		Set f = nothing
+
+		Set xmlDoc = nothing
+
+	End function
+
+
+	Function RunDISM(sUnattendDrive, sUnattendXml)
+
+		Dim iRetVal
+
+
+		' With ConfigMgr, OS images are not applied to the system using the setup.exe program. Instead they are applied 
+		' using imagex.exe.  As such, this script is responsible for adding packages to the system image in an offline 
+		' fashion.
+
+
+		' Make sure the scratch directory exists
+
+		oUtility.VerifyPathExists oUtility.LocalRootPath & "\Scratch"
+
+
+		' Set USERPROFILE environment variable to point to a valid local directory so that temporary files are placed there
+
+		oEnv("USERPROFILE") = oUtility.LocalRootPath
+
+
+		' Run DISM
+
+		iRetVal = oUtility.RunWithConsoleLogging("dism.exe /Image:" & sUnattendDrive & "\ /Apply-Unattend:""" & sUnattendXml & """ /ScratchDir:" & oUtility.LocalRootPath & "\Scratch /LogPath:" & oUtility.LogPath & "\ZTIPatches_DISM.log")
+
+
+		' Clean up the sandbox folder
+
+		If oFSO.FolderExists(oUtility.LocalRootPath & "\Scratch") then
+			oFileHandling.RemoveFolder oUtility.LocalRootPath & "\Scratch"
+		End if
+
+
+		RunDISM = iRetVal
+
+	End Function
+
+
+	Sub CreatePackagesXML
+		Dim sRootPath
+		Dim oDirectory
+		Dim oPackagesFile
+		Dim oPackageGroupsFile
+		Dim sTempPath
+		Dim oFile
+		Dim sCmd
+		Dim rc
+		Dim oUpdate
+		Dim oNode, oNode2
+		Dim sGuid
+
+		oLogging.CreateEntry "Creating new Package: " & oUtility.LocalRootPath & "\packages.xml", LogTypeInfo
+
+		sRootPath = ".\"
+		set oPackagesFile = oFSO.CreateTextFile(oUtility.LocalRootPath & "\packages.xml")
+		set oPackageGroupsFile = oFSO.CreateTextFile(oUtility.LocalRootPath & "\packageGroups.xml")
+		sTempPath = oUtility.LocalRootPath & "\ZTIPatches.tmp"
+		oUtility.VerifyPathExists sTempPath
+		oPackagesFile.WriteLine("<packages>")
+		oPackageGroupsFile.WriteLine("<groups><group guid='{00000000-0000-0000-0000-000000000000}' enable='True'><Name>default</Name><Comments>default folder (root)</Comments>")
+
+		For each oDirectory in oFSO.GetFolder(sRootPath).Subfolders
+
+			For each oFile in oDirectory.Files
+				If UCase(Right(oFile.Name, 4)) = ".CAB" then
+
+					' Get the update.mum file
+
+					oFSO.DeleteFile sTempPath & "\*.*", True
+					sCmd = "expand """ & oFile.Path & """ -F:update.mum """ & sTempPath & """"
+					oUtility.RunWithHeartbeat(sCmd)
+
+
+					' Load the update.mum file if it exists.  (If it doesn't, this isn't a valid Windows Update.)
+
+					If oFSO.FileExists(sTempPath & "\update.mum") then
+
+						Set oUpdate = oUtility.CreateXMLDOMObjectEx(sTempPath & "\update.mum")
+						Set oNode = oUpdate.SelectSingleNode("//assembly/assemblyIdentity")
+						Set oNode2= OUpdate.SelectSingleNode("//assembly/package")
+
+						oLogging.CreateEntry "     Create Package Item : " & oNode.Attributes.getNamedItem("name").value , LogTypeInfo
+
+						sGuid = oStrings.GenerateRandomGUID
+						oPackageGroupsFile.WriteLine("  <Member>" & sGuid & "</Member>")
+						oPackagesFile.WriteLine("  <package guid='" & sGuid & "' enable='True'>")
+						oPackagesFile.writeLine("    <Name>" & oNode.Attributes.getNamedItem("name").value & "</Name>")
+						oPackagesFile.WriteLine("    <PackageType>" & oNode2.Attributes.getNamedItem("releaseType").value & "</PackageType>")
+						oPackagesFile.WriteLine("    <ProcessorArchitecture>" & oNode.Attributes.getNamedItem("processorArchitecture").value & "</ProcessorArchitecture>")
+						oPackagesFile.WriteLine("    <Language>" & oNode.Attributes.getNamedItem("language").value & "</Language>")
+						oPackagesFile.WriteLine("    <PublicKeyToken>" & oNode.Attributes.getNamedItem("publicKeyToken").value & "</PublicKeyToken>")
+						oPackagesFile.WriteLine("    <Version>" & oNode.Attributes.getNamedItem("version").value & "</Version>")
+						oPackagesFile.WriteLine("    <ProductName>" & oNode.Attributes.getNamedItem("name").value & "</ProductName>")
+						oPackagesFile.WriteLine("    <ProductVersion>" & oNode.Attributes.getNamedItem("version").value & "</ProductVersion>")
+						oPackagesFile.WriteLine("    <Source>" & oFile.Path & "</Source>")
+						oPackagesFile.WriteLine("  </package>")
+
+					End if
+				End if
+			Next
+		Next
+		oPackagesFile.WriteLine("</packages>")
+		oPackagesFile.close
+		Set oPackagesFile=Nothing
+		
+		oPackageGroupsFile.WriteLine("</group></groups>")
+		oPackageGroupsFile.close
+		Set oPackageGroupsFile=Nothing
+
+
+	End Sub
+
+End Class
+
+	</script>
+</job>

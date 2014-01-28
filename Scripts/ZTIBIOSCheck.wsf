@@ -1,0 +1,173 @@
+<job id="ZTIBiosCheck">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIBioscheck.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Validate correct BIOS before Windows Installation.
+' // 
+' // Usage:     cscript ZTIBIOSCheck.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//
+'//  Global constants
+'//
+'//----------------------------------------------------------------------------
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIBiosCheck
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+	
+
+	Function Main
+
+		Dim iRetVal, iRC
+		Dim sBIOSCheckXML
+		Dim oBIOSCheck
+		Dim oNode, oData
+		dim hasBIOSErrors
+
+		iRetVal = Success
+
+		oLogging.CreateEntry "------------------------- LoadXMLFile -------------------------", LogTypeInfo
+
+		iRC = oUtility.FindFile("ZTIBIOSCheck.xml", sBIOSCheckXML)
+		TestAndLog iRC, "Locate ZTIBiosCheck.XML"
+		If iRC <> Success then
+			Exit Function
+		End if
+
+		Set oBIOSCheck = oUtility.CreateXMLDOMObjectEx(sBIOSCheckXML)
+		If oBIOSCheck is nothing then
+		
+			oLogging.CreateEntry "Unable to create XML object ZTIBIOSCHeck.xml, skipping: [" & sBIOSCheckXML & "]", LogTypeInfo
+			Exit function
+			
+		End if
+
+
+		oLogging.CreateEntry "------------------------- Get BIOS Data -------------------------", LogTypeInfo
+
+		Dim BIOS
+		Dim ComputerSystemProducts
+		Dim ComputerSystemProduct
+
+		For each BIOS in objWMI.InstancesOf("Win32_BIOS")
+		
+			Exit for ' Take the first instance
+			
+		Next
+
+		Set ComputerSystemProducts = objWMI.InstancesOf("Win32_ComputerSystemProduct")
+		If ComputerSystemProducts.Count = 0 then
+		
+			oLogging.CreateEntry "Unable to retrieve Win32_ComputerSystemProduct instance, assuming BIOS is OK.", LogTypeInfo
+			Exit function
+			
+		End if
+		
+		For each ComputerSystemProduct in ComputerSystemProducts
+		
+			Exit for ' Take the first instance
+			
+		Next
+
+
+		' Enumerate through list...
+
+		For each oNode in oBIOSCheck.selectNodes("//DRIVER/LOOKUP")
+
+			hasBIOSErrors = empty
+
+			For each oData in oNode.selectNodes ("./DATA[@VALUETYPE='string']")
+
+				Select case oData.attributes.getNamedItem("NAME").value
+				Case "Computer Manufacturer"
+					If oData.attributes.getNamedItem("VALUE").value <> ComputerSystemProduct.Vendor then
+					
+						hasBIOSErrors = empty
+						Exit for
+						
+					End if
+				Case "Model"
+					If oData.attributes.getNamedItem("VALUE").value <> ComputerSystemProduct.Name then
+					
+						hasBIOSErrors = empty
+						Exit for
+						
+					End if
+				Case "Date"
+					If oData.attributes.getNamedItem("VALUE").value <> BIOS.ReleaseDate then
+					
+						hasBIOSErrors = empty
+						Exit for
+						
+					End if
+					
+				End select
+
+				hasBIOSErrors = hasBIOSErrors & vbTab & oData.attributes.getNamedItem("VALUE").value
+
+			Next
+
+			If not IsEmpty(hasBIOSErrors) then
+
+				' Display Friendly error message, and exit.
+
+				oLogging.CreateEntry "This BIOS is incompatible with Window Vista: " & vbNewLine & _
+					oNode.attributes.getNamedItem("NAME").value & vbNewLine & _
+					hasBIOSErrors, LogTypeError
+				oLogging.CreateEntry oUtility.SelectSingleNodeString(oNode.parentNode,"./HISTORY/DESCRIPTION") , LogTypeError
+				For each oData in oNode.parentNode.selectNodes("./HISTORY/BUG")
+				
+					oLogging.CreateEntry oData.xml , LogTypeError
+					
+				Next
+
+				iRetVal = Failure
+
+			End if
+
+		Next
+
+		Main = iRetVal
+
+	End Function
+
+End Class
+   </script>
+</job>

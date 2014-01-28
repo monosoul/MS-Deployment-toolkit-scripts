@@ -1,0 +1,114 @@
+<job id="LTICopyScripts">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      LTICopyScripts.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Copy the LTI/ZTI scripts to the local drive.
+' // 
+' // Usage:     cscript.exe [//nologo] LTICopyScripts.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class LTICopyScripts
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public ScriptsToCopy
+	Public SourcePath
+	Public TargetPath
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' Create a list of scripts to copy.
+		
+		ScriptsToCopy = Array("LiteTouch.wsf", "ZTIUtility.vbs", "ZTIGather.wsf", "ZTIGather.xml", _
+			"Wizard.hta", "Credentials_ENU.xml", "Credentials_scripts.vbs", "WizUtility.vbs", "Wizard.css", _
+			"Wizard.ico", "BackButton.jpg", "plusicon.gif", "minusico.gif", "DeployWiz_Definition_ENU.xml", _
+			"DeployWiz_Initialization.vbs", "DeployWiz_Validation.vbs", "Summary_Definition_ENU.xml", _
+			"Summary_scripts.vbs", "LTICleanup.wsf", "LTIGetFolder.wsf", "ZTINICConfig.wsf", _
+			"ZTINICUtility.vbs","ZTIBCDUTILITY.VBS", "ZTIDataAccess.vbs", "LTISuspend.wsf", _
+			"ZTIDiskUtility.vbs", "ZTIRunCommandHidden.wsf", "header-image.png", "NavBar.png", "Computer.png")
+			
+		SourcePath = oUtility.ScriptDir & "\"		
+		TargetPath = oUtility.LocalRootPath & "\Scripts\"
+						
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim sTarget
+		Dim sSource
+		Dim sFile
+		
+		oLogging.CreateEntry "--------- Script Start ---------", LogTypeInfo		
+	
+		'//----------------------------------------------------------------------------
+		'//  Copy the necessary scripts to bootstrap the process; the rest will come
+		'//  from the deployment Share.
+		'//----------------------------------------------------------------------------
+
+		oUtility.VerifyPathExists oUtility.LocalRootPath & "\Scripts"
+
+		For each sFile in ScriptsToCopy
+
+			sTarget = TargetPath & sFile
+			sSource = SourcePath & sFile
+
+			If oFSO.FileExists(sTarget) then
+
+				oLogging.CreateEntry "File " & sTarget & " already exists in Target", LogTypeInfo
+
+			ElseIf not oFSO.FileExists(sSource) then
+
+				oLogging.CreateEntry "File " & sSource & " does not exist in Source.", LogTypeInfo
+
+			Else
+
+				oFSO.CopyFile sSource, sTarget, true
+				TestAndLog SUCCESS, "Copy " & sSource & " to " & sTarget
+
+			End if
+		Next
+
+
+		Main = SUCCESS
+
+	End Function
+
+
+End class
+
+
+	</script>
+</job>
+

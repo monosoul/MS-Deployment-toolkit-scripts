@@ -1,0 +1,52 @@
+<job id="ZTIPowerShell">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript" src="ZTIPSUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIPowerShell.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Run a PowerShell script in a task sequence via a custom
+' //            host.
+' // 
+' // Usage:     cscript ZTIPowerShell.wsf
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIPowerShell
+
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Main = RunPowerShellScript(oEnvironment.Item("ScriptName"), false)
+		
+	End Function
+	
+End Class
+
+   </script>
+</job>

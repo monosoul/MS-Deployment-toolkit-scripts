@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_ComputerBackup.vbs</CustomScript>
+	</Global>
+
+	<Pane id="ComputerBackup" title="Computer Backup">
+		<Body><![CDATA[
+<H1>Specify where to save a complete computer backup.</H1>
+<table>
+	<tr>
+		<td>
+			<input type=radio name="ComputerBackupLocation" id="CBRadio1" value="AUTO" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=A>
+		</td>
+		<td>
+			<Label class="Larger" for=CBRadio1 language=vbscript ><u class=larger>A</u>utomatically determine the location.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<div>Let the system determine the best location based on available disk space.</div>
+			<br>
+			<input type=checkbox id="AllowLocal" checked language=vbscript onclick="javascript:CBRadio1.value= this.checked?'AUTO':'NETWORK';" AccessKey=L>
+			<Label for=AllowLocal>Allow the computer backup to be stored <u>l</u>ocally when possible.</Label>
+		</td>
+	</tr>
+
+	<tr><td colspan=2>&nbsp;</td></tr>
+
+	<tr>
+		<td>
+			<input type=radio name="ComputerBackupLocation" id="CBRadio2" Value="SpecifyLocation" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=S>
+		</td>
+		<td>
+			<Label class="Larger" for=CBRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<div>Save the computer backup to the specified location.</div>
+			<br>
+			<div>L<u>o</u>cation: <label class=ErrMsg for=DataPath>* Required (MISSING)</label></div>
+			<input type=text id="DataPath" size=65 disabled language=vbscript onpropertychange=ValidateComputerBackupLocation AccessKey=O>
+			<input type="button" id="DataPathBrowse" language=vbscript onclick="javascript:DataPath.value = BrowseForFolder(DataPath.value);" Value="Browse" disabled />
+		</td>
+	</tr>
+
+	<tr><td colspan=2>&nbsp;</td></tr>
+
+	<tr>
+		<td>
+			<input type=radio name="ComputerBackupLocation" id="CBRadio3" checked value="NONE" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=K>
+		</td>
+		<td>
+			<Label class="Larger" for=CBRadio3 language=vbscript >Do not bac<u class=larger>k</u> up the existing computer.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<p>No backup should be performed.</p>
+		</td>
+	</tr>
+</table>
+		]]>
+		</Body>
+		<Initialization><![CDATA[InitializeComputerBackupLocation]]></Initialization>
+		<Validation><![CDATA[ValidateComputerBackupLocation]]></Validation>
+	</Pane>
+
+</Wizard>

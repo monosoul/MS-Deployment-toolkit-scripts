@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<migration urlid="http://www.microsoft.com/migration/1.0/migxmlext/UDIoffline">
+
+   <!-- Wallpapers  -->
+    <component type="System" context="User">
+        <displayName>Wallpapers</displayName>
+        <role role="Settings">
+            <rules>
+                <include>
+                    <objectSet>
+                        <pattern type="Registry">HKCU\Control Panel\Desktop [Pattern]</pattern>
+                        <pattern type="Registry">HKCU\Control Panel\Desktop [PatternUpgrade]</pattern>
+                        <pattern type="Registry">HKCU\Control Panel\Desktop [TileWallpaper]</pattern>
+                        <pattern type="Registry">HKCU\Control Panel\Desktop [WallPaper]</pattern>
+                        <pattern type="Registry">HKCU\Control Panel\Desktop [WallpaperStyle]</pattern>
+                        <pattern type="Registry">HKCU\Control Panel\Personalization\Desktop Slideshow [*]</pattern>                        
+                        <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Colors [*]</pattern>
+                        <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                        <content filter="MigXmlHelper.ExtractSingleFile(NULL, NULL)">
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Control Panel\Desktop [WallPaper]</pattern>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Internet Explorer\Desktop\General [BackupWallpaper]</pattern>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Internet Explorer\Desktop\General [Wallpaper]</pattern>
+                            </objectSet>
+                        </content>
+                        <content filter='MigXmlHelper.ExtractDirectory(NULL, "0", "* [*.jpg]")'>
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                            </objectSet>
+                        </content>
+                        <content filter='MigXmlHelper.ExtractDirectory(NULL, "0", "* [*.jpeg]")'>
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                            </objectSet>
+                        </content>
+                        <content filter='MigXmlHelper.ExtractDirectory(NULL, "0", "* [*.gif]")'>
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                            </objectSet>
+                        </content>
+                        <content filter='MigXmlHelper.ExtractDirectory(NULL, "0", "* [*.png]")'>
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                            </objectSet>
+                        </content>
+                        <content filter='MigXmlHelper.ExtractDirectory(NULL, "0", "* [*.bmp]")'>
+                            <objectSet>
+                                <pattern type="Registry">HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers\Images [*]</pattern>
+                            </objectSet>
+                        </content>
+                    </objectSet>
+                </include>
+            </rules>
+        </role>
+    </component>
+
+    <!-- Internet Explorer 8 -->
+    <component type="Application" context="UserAndSystem">
+        <displayName _locID="migapp.InternetExplorer8">Internet Explorer 8</displayName>
+        <role role="Settings">
+            <rules context="User">
+                <include>
+                    <objectSet>
+                        <pattern type="Registry">HKCU\Software\Microsoft\Internet Explorer\Main [*]</pattern>
+                    </objectSet>
+                </include>
+                <exclude>
+                    <objectSet>
+                        <pattern type="Registry">HKCU\Software\Microsoft\Internet Explorer\Main [Save Directory]</pattern>
+                    </objectSet>
+                </exclude>
+            </rules>
+        </role>
+    </component>
+	
+	
+    <!-- Mapped Network Drives -->
+    <component type="System" context="User">
+        <displayName>Mapped network drives</displayName>
+        <role role="Settings">
+            <rules>
+                <include>
+                    <objectSet>
+                        <pattern type="Registry">HKCU\Network\* [*]</pattern>
+                    </objectSet>
+                </include>
+            </rules>
+        </role>
+    </component>
+
+    <!-- Printer Settings  -->
+    <component type="Settings" context="User">
+        <displayName>Network Printers</displayName>
+        <role role="Settings">
+            <rules>
+                <include>
+                    <objectSet>
+                        <pattern type="Registry">HKCU\Printers\* [*]</pattern>
+			<pattern type="Registry">HKCU\Software\Microsoft\Windows NT\CurrentVersion\Devices [\\*]</pattern>
+                        <pattern type="Registry">HKCU\software\microsoft\windows NT\CurrentVersion\printerPorts [\\*]</pattern>
+                        <pattern type="Registry">HKCU\software\microsoft\windows NT\CurrentVersion\Windows [Device]</pattern>
+                    </objectSet>
+                </include>
+            </rules>
+        </role>
+    </component>
+
+
+    <!-- Make sure we exclude the task sequence folders  -->
+    <component type="Documents" context="UserAndSystem">
+        <displayName>Exclude task sequence folders</displayName>
+        <role role="Data"> 
+            <rules> 
+                <unconditionalExclude> 
+                    <objectSet>
+                        <script>MigXmlHelper.GenerateDrivePatterns ("_SMSTaskSequence [*.*]", "Fixed")</script> 
+                        <script>MigXmlHelper.GenerateDrivePatterns ("MININT [*.*]", "Fixed")</script>
+                    </objectSet> 
+                </unconditionalExclude> 
+            </rules> 
+        </role> 
+    </component> 
+
+
+</migration>

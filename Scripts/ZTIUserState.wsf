@@ -1,0 +1,1518 @@
+<job id="ZTIUserState">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIUserState.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Capture and restore user state using USMT
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIUserState.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIUserState
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+	Dim sUSMTPath
+	Dim sUSMTArchitecture
+	Dim sUSMTVersion
+	Dim sConfigFile
+	Dim bUseHardlinks
+	Dim sBaseArgs
+	Dim sDestinationLogicalDrive
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		If oEnvironment.Item("DeploymentMethod") <> "SCCM" Then
+			sDestinationLogicalDrive = oUtility.GetOSTargetDriveLetter
+		End If		
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim sScanStateFolder
+		Dim sFoundScanState
+
+		Dim sStatePath
+		Dim oMigXML
+		Dim sMigXMLArgs
+		Dim sXML, sFoundXML
+		Dim arrTmp
+		Dim sElement
+		Dim iRetVal
+		Dim sVariable
+		Dim sDefaultArgs
+		Dim bUnMapDrive, oDiskPart
+		Dim bValidStatePath
+
+
+		iRetVal = Success
+
+
+		'//----------------------------------------------------------------------------
+		'//  Exit if user state capture/restore was bypassed or if on a server
+		'//----------------------------------------------------------------------------
+
+		
+		If UCase(oEnvironment.Item("UserDataLocation")) = "NONE" then
+			If oUtility.Arguments.Exists("restore") then
+				oLogging.CreateEntry "User state restore bypassed.", LogTypeInfo
+			Else
+				oLogging.CreateEntry "User state capture bypassed.", LogTypeInfo
+			End if
+			Main = Success
+			Exit Function
+		End if
+
+		If UCase(oEnvironment.Item("IsServerOS")) = "TRUE" then
+			oLogging.CreateEntry "User state migration is not supported on server operating systems, exiting.", LogTypeInfo
+			Main = Success
+			Exit Function
+		End if
+
+		'//----------------------------------------------------------------------------
+		'//  Determine the architecture to use (needed to find the right files later)
+		'//----------------------------------------------------------------------------
+		If oEnvironment.Item("Architecture") = "X86" Then
+			sUSMTArchitecture = "X86"
+		ElseIf oEnvironment.Item("Architecture") = "X64" and oEnvironment.Item("DeploymentMethod") = "SCCM" Then		
+			sUSMTArchitecture = "amd64"
+		Else
+			sUSMTArchitecture = "X64"
+		End If
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Determine the version of USMT to use
+		'//----------------------------------------------------------------------------
+
+
+		sUSMTVersion = ""
+		sUSMTPath = ""
+		bUseHardlinks = False
+		
+		If Ucase(oEnvironment.Item("USMT3")) = "YES" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) < "6.1" and oEnvironment.Item("DeploymentMethod") <> "SCCM" then
+		
+			oLogging.CreateEntry "Setting USMT version to USMT3", LogTypeInfo
+			sUSMTVersion = "USMT3"
+
+		Elseif Ucase(oEnvironment.Item("USMT4")) = "YES" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) < "6.2" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) >= "6.0" and oEnvironment.Item("DeploymentMethod") <> "SCCM" then
+		
+			oLogging.CreateEntry "Setting USMT version to USMT4", LogTypeInfo
+			sUSMTVersion = "USMT4"
+			
+		Else
+
+			If Left(oEnvironment.Item("ImageBuild"),3) < "6.0" and oEnvironment.Item("DeploymentType") <> "REPLACE" and oEnvironment.Item("DeploymentMethod") <> "SCCM" Then
+			
+				oLogging.CreateEntry "Windows XP is being deployed, assuming USMT 3", LogTypeInfo
+				sUSMTVersion = "USMT3"
+
+			Else
+				
+				If oEnvironment.Item("DeploymentMethod") = "SCCM" Then
+				
+					If UCase(Right(oShell.CurrentDirectory,4)) = "\X86" then
+						sScanStateFolder = oShell.CurrentDirectory & "\..\..\USMT\X86"
+					Elseif UCase(Right(oShell.CurrentDirectory,4)) = "\X64" then
+						sScanStateFolder = oShell.CurrentDirectory & "\..\..\USMT\AMD64"
+					Else
+						sScanStateFolder = oShell.CurrentDirectory & "\" & sUSMTArchitecture
+					End if
+					
+					oLogging.CreateEntry "Checking for USMT Files in " & sScanStateFolder, LogTypeInfo
+					If  oFSO.FileExists (sScanStateFolder & "\scanstate.exe") then
+						If Left(oFSO.GetFileVersion(sScanStateFolder & "\scanstate.exe"),3) >= "6.2" then
+							oLogging.CreateEntry "Found USMT 5 executables. Using USMT 5", LogTypeInfo
+							sUSMTVersion = "USMT5"	
+							sUSMTPath = sScanStateFolder
+							bUseHardlinks = True
+						Elseif Left(oFSO.GetFileVersion(sScanStateFolder & "\scanstate.exe"),3) = "6.1" then
+							oLogging.CreateEntry "Found USMT 4 executables. Using USMT 4", LogTypeInfo
+							sUSMTVersion = "USMT4" 
+							sUSMTPath = sScanStateFolder
+							bUseHardlinks = True
+						Else
+							oLogging.CreateEntry "The USMT files in " & sScanStateFolder & " are not USMT4 or USMT5", LogTypeInfo
+						End if
+					End if	
+					
+				Else
+				
+					sScanStateFolder = oEnvironment.Item("DeployRoot") & "\Tools\" & sUSMTArchitecture
+					oLogging.CreateEntry "Checking for USMT Files in " & sScanStateFolder, LogTypeInfo
+					If  oFSO.FileExists (sScanStateFolder & "\USMT5\scanstate.exe") then
+						If Left(oFSO.GetFileVersion(sScanStateFolder & "\USMT5\scanstate.exe"),3) >= "6.2" then
+							oLogging.CreateEntry "Found USMT 5 executables. Using USMT 5", LogTypeInfo
+							sUSMTVersion = "USMT5"	
+							sUSMTPath = sScanStateFolder & "\USMT5"
+							bUseHardlinks = True
+						Else
+							oLogging.CreateEntry "The USMT files in " & sScanStateFolder & "\USMT5 are the wrong version - " & oFSO.GetFileVersion(sScanStateFolder & "\USMT5\scanstate.exe"), LogTypeWarning
+						End if
+					ElseIf oFSO.FileExists (sScanStateFolder & "\USMT4\scanstate.exe") then
+						If Left(oFSO.GetFileVersion(sScanStateFolder & "\USMT4\scanstate.exe"),3) = "6.1" then
+							oLogging.CreateEntry "Found USMT 4 executables. Using USMT 4", LogTypeInfo
+							sUSMTVersion = "USMT4" 
+							sUSMTPath = sScanStateFolder & "\USMT4"
+							bUseHardlinks = True
+						Else
+							oLogging.CreateEntry "The USMT files in " & sScanStateFolder & "\USMT4 are the wrong version - " & oFSO.GetFileVersion(sScanStateFolder & "\USMT4\scanstate.exe"), LogTypeWarning
+						End if
+					ElseIf oFSO.FileExists (sScanStateFolder & "\USMT3\scanstate.exe") then
+						If Left(oFSO.GetFileVersion(sScanStateFolder & "\USMT3\scanstate.exe"),3) = "6.0" then
+							oLogging.CreateEntry "Found USMT 3 executables. Using USMT 3", LogTypeInfo
+							sUSMTVersion = "USMT3" 
+							sUSMTPath = sScanStateFolder & "\USMT3"
+							bUseHardlinks = False
+						Else
+							oLogging.CreateEntry "The USMT files in " & sScanStateFolder & "\USMT3 are the wrong version - " & oFSO.GetFileVersion(sScanStateFolder & "\USMT3\scanstate.exe"), LogTypeWarning
+						End if
+					End if		
+
+				End if
+					
+				If sUSMTVersion = "" then
+					oLogging.ReportFailure "Unable to find any version of USMT, unable to perform user state migration.", 9701
+				End if
+
+			End If
+			
+
+		End If
+
+		If oFSO.FileExists(oEnvironment.Item("DeployRoot") & "\Tools\" & sUSMTArchitecture & "\" & sUSMTVersion & "\ScanState.exe") and sUSMTPath = "" then
+			oLogging.CreateEntry "Found scan state files at " & oEnvironment.Item("DeployRoot") & "\Tools\" & sUSMTArchitecture & "\" & sUSMTVersion & "\ScanState.exe", LogTypeInfo
+			sUSMTPath = oEnvironment.Item("DeployRoot") & "\Tools\" & sUSMTArchitecture & "\" & sUSMTVersion
+		End if
+
+
+		' Validations
+
+		If oEnv("SystemDrive") = "X:" and Right(sUSMTVersion,1) < "4" Then
+			oLogging.ReportFailure "USMT 4 or higher must be used to perform an offline USMT migration", 9702
+		End If
+		If sUSMTVersion = "USMT3" and Left(oEnvironment.Item("ImageBuild"), 3) > "5.2" then
+			oLogging.ReportFailure "USMT 3 cannot be used with destination OS " & oEnvironment.Item("ImageBuild"), 9703
+		End if
+		If sUSMTVersion = "USMT4" and Left(oEnvironment.Item("ImageBuild"), 3) > "6.1" then
+			oLogging.ReportFailure "USMT 4 cannot be used with destination OS " & oEnvironment.Item("ImageBuild"), 9704
+		End if
+
+
+		' Check if USMT files exist
+
+		If not oFSO.FileExists (oEnvironment.Item("DeployRoot") & "\Tools\" & sUSMTArchitecture & "\USMT" & Right(sUSMTVersion,1) & "\scanstate.exe") and oEnvironment.Item("DeploymentMethod") <> "SCCM" then
+			oLogging.ReportFailure "Unable to find USMT " & Right(sUSMTVersion,1) & " files, cannot capture/restore user state.", 9705
+		End if
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Install the appropriate USMT version
+		'//----------------------------------------------------------------------------
+					
+		sUSMTPath = InstallUSMT
+
+			
+		'//----------------------------------------------------------------------------
+		'//  Determine the migration XML files to use and copy them locally
+		'//----------------------------------------------------------------------------
+
+		' Build a list of files
+
+		Set oMigXML = oEnvironment.ListItem("USMTMigFiles")
+		If oMigXML.Count = 0 then
+			oMigXML.Add "MigApp.xml", ""
+			If sUSMTVersion = "USMT3" Then
+				oMigXML.Add "MigSys.xml", ""
+				oMigXML.Add "MigUser.xml", ""
+			Else
+				oMigXML.Add "Migdocs.xml", ""
+				If oEnvironment.Item("OSVersion") = "WinPE" then
+					oMigXML.Add "UDIOffline.xml", ""
+				End if
+			End if
+		End if
+
+
+		' Find each of the files and add them to the list of parameters
+
+		sMigXMLArgs = ""
+
+		For each sXML in oMigXML.Keys
+
+			' Figure out where the XML file resides.
+
+			sFoundXML = ""
+
+			If oFSO.FileExists(sUSMTPath & "\" & sXML) then  
+
+				' This is where we want the file to be.
+
+				sFoundXML = sUSMTPath & "\" & sXML
+
+			ElseIf oFSO.FileExists(".\" & sUSMTArchitecture & "\" & sXML) then
+
+				' Typically the file would only be found under the working directory (in an architecture folder)
+				' with ConfigMgr and USMT 4.  It needs to be copied to the local install folder.
+
+				sFoundXML = oShell.CurrentDirectory & "\" & sUSMTArchitecture & "\" & sXML
+
+			Else
+
+				' Try to find the file in any known location
+
+				iRetVal = oUtility.FindFile(sXML, sFoundXML)
+
+			End if
+
+
+			' Copy the file to the local install folder if it doesn't already exist or if the existing file is older
+
+			If sFoundXML = "" then
+
+				oLogging.CreateEntry "WARNING: Unable to find specified USMT migration XML file " & sXML, LogTypeWarning
+
+			ElseIf not oFSO.FileExists(sUSMTPath & "\" & sXML) then
+
+				oLogging.CreateEntry "Copying " & sFoundXML & " to local install directory " & sUSMTPath, LogTypeInfo
+				oFSO.CopyFile sFoundXML, sUSMTPath & "\" & sXML, true
+
+				' Add the file to the arguments list
+
+				sMigXMLArgs = sMigXMLArgs & " /i:""" & sUSMTPath & "\" & sXML & """"
+
+			Else
+				If oFSO.GetFile(sFoundXML).DateLastModified > oFSO.GetFile(sUSMTPath & "\" & sXML).DateLastModified then
+
+					oLogging.CreateEntry "Copying updated " & sFoundXML & " to local install directory overwriting existing file.", LogTypeInfo
+					oFSO.CopyFile sFoundXML, sUSMTPath & "\" & sXML, true
+
+				Else
+
+					oLogging.CreateEntry "Migration XML file " & sFoundXML & " is already present and up to date.", LogTypeInfo
+				End if
+
+				' Add the file to the arguments list
+
+				sMigXMLArgs = sMigXMLArgs & " /i:""" & sUSMTPath & "\" & sXML & """"
+
+			End if
+
+		Next
+
+
+		'//----------------------------------------------------------------------------
+		'//  If a config XML file was specified, copy it to the install folder
+		'//----------------------------------------------------------------------------
+
+		' See if a config file was specified.  Otherwise, use a default one.
+
+		If oEnvironment.Item("USMTConfigFile") <> "" then
+			sConfigFile = oEnvironment.Item("USMTConfigFile")
+		Else
+			sConfigFile = "ZTIUserState_Config.xml"
+		End if
+
+
+		' Find the file
+
+		sFoundXML = ""
+
+		If oFSO.FileExists(sUSMTPath & "\" & sConfigFile ) then  
+
+			' This is where we want the file to be.
+
+			sFoundXML = sUSMTPath & "\" & sConfigFile 
+
+		ElseIf oFSO.FileExists(".\" & sUSMTArchitecture & "\" & sConfigFile ) then
+
+			' Typically the file would only be found under the working directory (in an architecture folder)
+			' with ConfigMgr and USMT 4.  It needs to be copied to the local install folder.
+
+			sFoundXML = oShell.CurrentDirectory & "\" & sUSMTArchitecture & "\" & sConfigFile
+		Else
+
+			' Try to find the file in any known location
+
+			iRetVal = oUtility.FindFile(sConfigFile, sFoundXML)
+		End If
+
+
+		' Copy the file to the local install folder if it doesn't already exist or if the existing file is older
+
+		If sUSMTVersion = "USMT3" then
+
+			oLogging.CreateEntry "Using USMT 3, not specifying USMT configuration XML file.", LogTypeInfo
+
+		ElseIf sFoundXML = "" then
+
+			oLogging.CreateEntry "WARNING: Unable to find specified USMT configuration XML file " & oEnvironment.Item("USMTConfigFile"), LogTypeWarning
+
+		ElseIf not oFSO.FileExists(sUSMTPath & "\" & sConfigFile) then
+
+			oLogging.CreateEntry "Copying " & sFoundXML & " to local install directory " & sUSMTPath, LogTypeInfo
+			oFSO.CopyFile sFoundXML, sUSMTPath & "\" & sConfigFile, true
+
+			' Add the file to the arguments list
+
+			sMigXMLArgs = sMigXMLArgs & " /config:""" & sUSMTPath & "\" & sConfigFile & """"
+
+		Else
+			If oFSO.GetFile(sFoundXML).DateLastModified > oFSO.GetFile(sUSMTPath & "\" & sConfigFile).DateLastModified then
+
+				oLogging.CreateEntry "Copying updated " & sFoundXML & " to local install directory overwriting existing file.", LogTypeInfo
+				oFSO.CopyFile sFoundXML, sUSMTPath & "\" & sConfigFile, true
+
+			Else
+				oLogging.CreateEntry "Migration XML file " & sFoundXML & " is already present and up to date.", LogTypeInfo
+			End if
+
+			' Add the file to the arguments list
+
+			sMigXMLArgs = sMigXMLArgs & " /config:""" & sUSMTPath & "\" & sConfigFile & """"
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Determine command line options to use
+		'//----------------------------------------------------------------------------
+
+
+		' Map the OSDMigrateAdditional*Options variables to the equivalent MDT variables
+
+		If oEnvironment.Item("OSDMigrateAdditionalCaptureOptions") <> "" and oEnvironment.Item("ScanStateArgs") = "" then
+			oEnvironment.Item("ScanStateArgs") = oEnvironment.Item("OSDMigrateAdditionalCaptureOptions")
+		End If
+		If oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") <> "" and oEnvironment.Item("LoadStateArgs") = "" then
+			oEnvironment.Item("LoadStateArgs") = oEnvironment.Item("OSDMigrateAdditionalRestoreOptions")
+		End If
+
+
+		' Set the base capture and restore parameters
+
+		If oUtility.Arguments.Exists("restore") then
+			sVariable = "LoadStateArgs"
+			sDefaultArgs = " /v:5 /c /lac"
+		Else
+			sVariable = "ScanStateArgs"
+			sDefaultArgs = " /v:5 /c /o"
+		End if
+		If oEnvironment.Item(sVariable) <> "" Then
+			sBaseArgs = oEnvironment.Item(sVariable)
+		Else
+			sBaseArgs = sDefaultArgs
+		End If
+
+
+		' See if there are specific users to capture
+
+		If oEnvironment.Item("UDProfiles") <> "" then
+
+			arrTmp = split(oEnvironment.Item("UDProfiles"), ",")
+			For each sElement in arrTmp
+				sBaseArgs = sBaseArgs & " /ui:" & Trim(sElement)
+			Next
+
+		End if
+
+
+		' Add the XML files
+
+		sBaseArgs = sBaseArgs & " " & sMigXMLArgs
+		oLogging.CreateEntry "Base arguments: " & sBaseArgs, LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------
+		'//  See what we need to do
+		'//----------------------------------------------------------------------------
+
+		If oUtility.Arguments.Exists("estimate") then
+
+			' This is a ConfigMgr-only scenario.
+
+			' If the OSDStateStore path is already pointing to a network location, just make sure the path exists (creating the folder if it doesn't)
+			If Left(oEnvironment.Item("OSDStateStorePath"), 2) = "\\" then
+
+				oEnvironment.Item("USMTLocal") = "True"  ' This causes the "Request State Store" step to be skipped
+				oUtility.ValidateConnection oEnvironment.Item("OSDStateStorePath")
+				oUtility.VerifyPathExists oEnvironment.Item("OSDStateStorePath")
+
+			' If using USMT 4, set hardlink parameters and exit
+			ElseIf sUSMTVersion <> "USMT3" then
+
+				oLogging.CreateEntry "Setting ConfigMgr variables to perform a hardlink migration.", LogTypeInfo
+
+				If oEnvironment.Item("OSDMigrateAdditionalCaptureOptions") = "" Then
+					oEnvironment.Item("OSDMigrateAdditionalCaptureOptions") = "/hardlink /nocompress"
+				Else
+					If Instr(oEnvironment.Item("OSDMigrateAdditionalCaptureOptions"), "/hardlink") = 0 Then
+						oEnvironment.Item("OSDMigrateAdditionalCaptureOptions") = oEnvironment.Item("OSDMigrateAdditionalCaptureOptions")  & " /hardlink /nocompress"
+					End If
+				End If
+				If oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = "" Then
+					oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = "/hardlink /nocompress"
+				Else
+					If Instr(oEnvironment.Item("OSDMigrateAdditionalRestoreOptions"), "/hardlink") = 0 Then
+						oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = oEnvironment.Item("OSDMigrateAdditionalRestoreOptions")  & " /hardlink /nocompress"
+					End If
+				End If
+
+				oEnvironment.Item("USMTLocal") = "True"  ' This causes the "Request State Store" step to be skipped
+				oEnvironment.Item("OSDStateStorePath") = oUtility.StatePath  ' Force a local path for the state store
+
+			' Using USMT 3, so perform an estimate.  
+			Else
+
+				' Perform a state capture estimate
+
+				iRetVal = DoStateCapture(oUtility.LogPath & "\usmtestimate", true, sBaseArgs)
+				If iRetVal = 0 then
+					If UseLocal then
+						oEnvironment.Item("USMTLocal") = "True"  ' This causes the "Request State Store" step to be skipped
+						oEnvironment.Item("OSDStateStorePath") = oUtility.StatePath  ' Force a local path for the state store
+					Else
+						oEnvironment.Item("USMTLocal") = "False"  ' This causes the "Request State Store" step to be run, using the SMP
+					End if
+				Else
+					oLogging.CreateEntry "Unable to determine user state size, assuming it will fit locally.", LogTypeWarning
+					oEnvironment.Item("USMTLocal") = "True"  ' This causes the "Request State Store" step to be skipped
+					oEnvironment.Item("OSDStateStorePath") = oUtility.StatePath  ' Force a local path for the state store
+				End if
+
+			End if
+
+
+		ElseIf oUtility.Arguments.Exists("restore") then
+
+			' Make sure the boot volume is visible, just in case it contains a state store
+
+			bUnMapDrive = false
+			set oDiskPart = GetBootDriveEx ( false, "", true )
+			If oDiskPart is Nothing then
+
+				oLogging.CreateEntry "The drive letter for the boot partition was not found.", LogTypeInfo
+				set oDiskPart = GetBootDriveEx ( true, "", true )
+				If oDiskPart is Nothing then
+					oLogging.CreateEntry "Unable to find boot drive.", LogTypeInfo
+				Else
+					oLogging.CreateEntry "Assigned drive letter " & oDiskPart.Drive & " to the boot volume.", LogTypeInfo
+					bUnMapDrive = true
+				End if
+			End if
+
+
+			' Make sure we have a state path
+
+			bValidStatePath = true
+			sStatePath = DetermineOSDStateStorePath("RESTORE")
+			
+			If sStatePath = "" or not oFSO.FolderExists(sStatePath) then
+			
+				oLogging.CreateEntry "No user state to restore, exiting.", LogTypeInfo
+				bValidStatePath = False
+							
+			ElseIf sUSMTVersion = "USMT3" and not oFSO.FolderExists(sStatePath & "\USMT3") then
+			
+				oLogging.CreateEntry "No user state folder (USMT3) found at " & oEnvironment.Item("StatePath") & ", unable to restore user state.", LogTypeWarning
+				bvalidStatePath = False
+				
+			ElseIf Right(sUSMTVersion,1) >= "4" and Not oFSO.FolderExists(sStatePath & "\USMT") then
+			
+				oLogging.CreateEntry "No user state folder (USMT) compatible with " & sUSMTVersion & " found at " & sStatePath & ", unable to restore user state.", LogTypeWarning
+				oLogging.CreateEntry "Please check if you are using a version of USMT that is compatible with this Operating System. USMT3 cannot be restored to Windows 7 or  greater.", LogTypeWarning					
+				bValidStatePath = False
+				
+			End if
+
+
+			' Do the restore if we found a valid state store path
+
+			If bValidStatePath then
+
+				iRetVal = DoStateRestore(sStatePath, sBaseArgs)
+
+				oLogging.CreateEntry oUtility.ScriptName & " COMPLETED.  Return Value = " & iRetVal, LogTypeInfo
+			End if
+
+
+			' Remove the boot drive letter if necessary
+
+			If bUnMapDrive then
+				oLogging.CreateEntry "Removing drive letter " & oDiskPart.Drive & " from the boot drive.", LogTypeInfo
+				RunDiskPartSilent array("list volume", "Select volume " & left(oDiskPart.Drive,2), "REMOVE LETTER=" & left(oDiskPart.Drive,2) & " NOERR", "exit" ) 
+			End if
+
+
+		ElseIf oUtility.Arguments.Exists("capture") then
+
+			' If running offline, find the existing OS
+
+			If oEnv("SystemDrive") = "X:" then   ' We're in PE
+
+				' Find the local Windows installation (if not already determined)
+
+				If VerifyWinPEWinDir <> Success Then
+					DetermineWinPEWinDir
+				End If
+			
+				If oEnvironment.Item("OSDWinPEWinDir") = "" Then
+					oLogging.ReportFailure "The offline Windows directory could not be determined, offline USMT migration cannot be performed", 9706
+				End If
+			End if	
+
+
+			' Get the state path
+
+			sStatePath = DetermineOSDStateStorePath("CAPTURE")
+
+			If sUSMTVersion = "USMT5" then
+				If Left(oEnvironment.Item("ImageBuild"),3) = "6.1" then
+					oLogging.CreateEntry "Special Case for USMT 5.0 scanstate for Windows 7 Target. /targetWindows7", LogTypeInfo
+					sBaseArgs = sBaseArgs & " /targetWindows7"
+				End if
+			End if
+
+
+			' Now perform the capture
+
+			iRetVal = DoStateCapture(sStatePath, false, sBaseArgs)
+			If iRetVal <> Success then
+				oLogging.ReportFailure "Non-zero return code from USMT capture, rc = " & iRetVal, 9707
+			End if
+
+		Else
+
+			oLogging.ReportFailure "No valid command line option was specified", 9708
+
+		End if
+
+
+		Main = iRetval
+
+		' All done
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	DoStateCapture
+	'//  Purpose:	Perform a state capture or estimate as requested
+	'//---------------------------------------------------------------------------
+	Function DoStateCapture(sStatePath, bEstimate, sBaseArgs)
+
+		Dim iRetVal, sScanStateArgs, sElement
+		Dim sLog, sProgressFileName
+		Dim sCmd, arrTmp, iType, iEstimate, iActual
+
+		iRetVal = Failure
+
+
+		If bEstimate then
+			oLogging.CreateEntry "------ Performing State Capture Estimate ------", LogTypeInfo
+		Else
+			oLogging.CreateEntry "------ Performing State Capture ------", LogTypeInfo
+		End if
+
+
+		' Figure out what to call the logs
+
+		If bEstimate then
+			sLog = oUtility.LogPath & "\USMTestimate.log"
+			sProgressFileName = oUtility.LogPath & "\USMTestimate.prg"
+			On Error Resume Next
+			oFSO.DeleteFile oUtility.LogPath & "\USMTestimate.*"
+			On Error Goto 0
+		Else
+			sLog = oUtility.LogPath & "\USMTcapture.log"
+			sProgressFileName = oUtility.LogPath & "\USMTcapture.prg"
+			On Error Resume Next
+			oFSO.DeleteFile oUtility.LogPath & "\USMTcapture.*"
+			On Error Goto 0
+		End if
+		oLogging.CreateEntry "USMT log file: " & sLog, LogTypeInfo
+		oLogging.CreateEntry "USMT progress file: " & sProgressFileName, LogTypeInfo
+
+
+		' Add the appropriate options
+
+		If bEstimate then
+			sScanStateArgs = """" & oUtility.LogPath & "\usmtestimate"" " & sBaseArgs & " /p /nocompress /l:" & sLog & " /progress:" & sProgressFileName
+		Else			
+			oUtility.VerifyPathExists sStatePath
+			sScanStateArgs = QuotedPath(sStatePath) & " " & AdjustArgs("CAPTURE", sStatePath, sBaseArgs) & " /l:" & sLog & " /progress:" & sProgressFileName
+		End if
+
+
+		' If running offline, add the necessary parameters
+
+		If oEnv("SystemDrive") = "X:" then   ' We're in PE
+
+			' Set USMT working directory environment variable to a writable path
+			
+			oEnv("USMT_WORKING_DIR") = oEnvironment.Item("OSDWinPEWindir") & "\temp"
+			oEnv("TEMP") = oEnvironment.Item("OSDWinPEWindir") & "\temp"
+
+
+			' Set the platform of the old OS (32 or 64)
+
+			Select Case oEnvironment.Item("OriginalArchitecture")
+				
+				Case "X64"	
+					oEnv("MIG_OFFLINE_PLATFORM_ARCH") = "64"
+				Case "X86"
+					oEnv("MIG_OFFLINE_PLATFORM_ARCH") = "32"
+				Case Else
+					oLogging.ReportFailure "Architecture of the original Operating System could not be determined", 9709
+			End Select
+
+
+			' Add the needed offline switches
+
+			If Instr(1, oEnvironment.Item("OSDWinPEWindir"), ".old", vbTextCompare) > 0 then
+				sScanStateArgs = sScanStateArgs & " /offlineWinOld:""" & oEnvironment.Item("OSDWinPEWindir")
+			Else
+				sScanStateArgs = sScanStateArgs & " /offlineWinDir:" & oEnvironment.Item("OSDWinPEWindir")
+			End if
+
+
+			' Make sure restore uses hardlinks too (for ConfigMgr) if capture is using them
+
+			If oEnvironment.Item("DeploymentMethod") = "SCCM" and Instr(sScanStateArgs, "/hardlink") > 0 then
+				If oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = "" Then
+					oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = "/hardlink /nocompress"
+				Else
+					If Instr(oEnvironment.Item("OSDMigrateAdditionalRestoreOptions"), "/hardlink") = 0 Then
+						oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = oEnvironment.Item("OSDMigrateAdditionalRestoreOptions")  & " /hardlink /nocompress"
+					End If
+				End If
+			End if
+
+		End if
+
+
+		' Substitute the appropriate custom key values
+
+		sScanStateArgs = oEnvironment.Substitute(sScanStateArgs)
+		oLogging.CreateEntry "ScanState arguments: " & sScanStateArgs, LogTypeInfo
+
+
+		' Execute the Scanstate command
+
+		If bEstimate then
+			iType = LogTypeWarning
+			oLogging.CreateEvent 41004, LogTypeInfo, "ZTI Beginning user state estimate", Array(bEstimate)
+		Else
+			iType = LogTypeError
+			oLogging.CreateEvent 41004, LogTypeInfo, "ZTI Beginning user state capture", Array(bEstimate)
+		End if
+
+		On Error Resume Next
+		oShell.CurrentDirectory = sUSMTPath
+		sCmd = "cmd /c """"" & sUSMTPath & "\scanstate.exe"" " & sScanStateArgs & " > nul 2>&1"""
+		iRetVal = RunWithProgress(sCmd, sProgressFileName)
+		If Err then
+			iRetVal = Err.Number
+			oLogging.CreateEvent 41006, iType, "ZTI ERROR - Unable to run Scanstate, Error = " & Err.Description & " (" & Err.Number & ")", Array(bEstimate, Err.Number)
+		ElseIf iRetVal <> 0 and iRetVal <> 3 then
+			oLogging.CreateEvent 41006, iType, "ZTI ERROR - Non-zero return code from Scanstate, RC = " & iRetVal, Array(bEstimate, iRetVal)
+			If bEstimate then
+				ScanProgress sProgressFileName, "ESTIMATE"
+			Else
+				ScanProgress sProgressFileName, "SCANSTATE"
+			End if
+		Else
+
+			If iRetVal = 3 then
+				oLogging.CreateEntry "USMT_WOULD_HAVE_FAILED - At least one error was skipped as a result of /c.", LogTypeWarning
+				oLogging.CreateEvent 41005, LogTypeInfo, "ZTI Scanstate estimate was successful with Warning (USMT_WOULD_HAVE_FAILED).", Array(bEstimate)
+				iRetVal = 0
+			End if
+
+			If bEstimate then
+				oLogging.CreateEvent 41005, LogTypeInfo, "ZTI Scanstate estimate was successful.", Array(bEstimate)
+				ScanProgress sProgressFileName, "ESTIMATE"
+			Else
+
+				' Get the estimated size
+
+				If oEnvironment.Item("USMTEstimate") <> "" then
+					iEstimate = oEnvironment.Item("USMTEstimate")
+				Else
+					iEstimate = 0
+				End if
+
+
+				' Get the actual size
+
+				iActual = Int(oFSO.GetFolder(sStatePath).Size / 1048576)
+
+
+				' Report an event with both
+
+	'			oLogging.CreateEvent 41005, LogTypeInfo, "ZTI Scanstate was successful.  Estimated size: " & CStr(iEstimate) & "MB.  Actual size: " & iActual & "MB.", Array(bEstimate, iEstimate, iActual)
+				ScanProgress sProgressFileName, "SCANSTATE"
+
+			End if
+			iRetVal = Success
+		End if
+		On Error Goto 0
+
+		DoStateCapture = iRetVal
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	DoStateRestore
+	'//  Purpose:	Determine if user state can be stored locally or not
+	'//---------------------------------------------------------------------------
+	Function DoStateRestore(sStatePath, sBaseArgs)
+
+		Dim iRetVal, sLoadStateArgs
+		Dim sLog, sProgressFileName
+		Dim sCmd, re
+		Dim arrTmp, sElement
+
+
+		iRetVal = Failure
+
+		oLogging.CreateEntry "------ Performing State Restore ------", LogTypeInfo
+
+
+		' Assign the log file names
+
+		sLog = oUtility.LogPath & "\USMTrestore.log"
+		sProgressFileName = oUtility.LogPath & "\USMTrestore.prg"
+		On Error Resume Next
+		oFSO.DeleteFile oUtility.LogPath & "\USMTrestore.*"
+		On Error Goto 0
+
+
+		' Add the appropriate options
+
+		sLoadStateArgs = QuotedPath(sStatePath) & " " & AdjustArgs("RESTORE", sStatePath, sBaseArgs) & " /l:" & sLog & " " & " /progress:" & sProgressFileName
+
+
+		' Substitute the appropriate custom key values
+
+		sLoadStateArgs = oEnvironment.Substitute(sLoadStateArgs)
+
+
+		' Execute the Loadstate command
+
+		oLogging.CreateEvent 41007, LogTypeInfo, "ZTI Beginning user state restore.", Array()
+
+		On Error Resume Next
+		oShell.CurrentDirectory = sUSMTPath
+		sCmd = "cmd /c """"" & sUSMTPath & "\loadstate.exe"" " & sLoadStateArgs & " > nul 2>&1"""
+		iRetVal = RunWithProgress(sCmd, sProgressFileName)
+		If Err then
+			iRetVal = Err.Number
+			oLogging.CreateEvent 41007, LogTypeError, "ZTI ERROR - Unable to run Loadstate, Error = " & Err.Description & " (" & Err.Number & ")", Array(Err.Number)
+			' Move the state store if it is local so OSD doesn't delete it
+			If ucase(Left(sStatePath, 2)) = ucase(sDestinationLogicalDrive) then
+				oFSO.MoveFolder sStatePath, Substitute("%WINDIR%\StateStore")
+				oLogging.CreateEntry "Moving state store directory " & sStatePath & " to %WINDIR%\StateStore so that it does not get deleted.", LogTypeWarning
+			End if
+		ElseIf iRetVal <> Success and iRetVal <> 3 then
+			oLogging.CreateEvent 41007, LogTypeError, "ZTI ERROR - Non-zero return code from Loadstate, RC = " & iRetVal, Array(iRetVal)
+			' Move the state store if it is local so OSD doesn't delete it
+			If ucase(Left(sStatePath, 2)) = ucase(sDestinationLogicalDrive) then
+				oFSO.MoveFolder sStatePath, Substitute("%WINDIR%\StateStore")
+				oLogging.CreateEntry "Moving state store directory " & sStatePath & " to %WINDIR%\StateStore so that it does not get deleted.", LogTypeWarning
+			End if
+			ScanProgress sProgressFileName, "LOADSTATE"
+		Else
+			If iRetVal = 3 then
+				oLogging.CreateEntry "USMT_WOULD_HAVE_FAILED - At least one error was skipped as a result of /c.", LogTypeWarning
+				oLogging.CreateEvent 41008, LogTypeInfo, "ZTI User state restored successfully with Warning (USMT_WOULD_HAVE_FAILED).", Array()
+			End if
+			iRetVal = Success
+			oLogging.CreateEvent 41008, LogTypeInfo, "ZTI User state restored successfully.", Array()
+			ScanProgress sProgressFileName, "LOADSTATE"
+		End if
+		On Error Goto 0
+
+		DoStateRestore = iRetVal
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	QuotedPath
+	'//  Purpose:	Uses appropriate rules needed for USMT when specify store path
+	'//---------------------------------------------------------------------------
+	Function QuotedPath(sStatePath)
+
+		If mid(sStatePath,2,1) = ":" and len(sStatePath) < 3 then
+			QuotedPath = sStatePath
+		ElseIf mid(sStatePath,2,2) = ":\" and len(sStatePath) < 4 then
+			QuotedPath = sStatePath
+		ElseIf Right(sStatePath,1) = "\" then
+			QuotedPath = """" & Left(sStatePath, Len(sStatePath) - 1) & """"
+		Else
+			QuotedPath= """" & sStatePath & """"
+		End if
+
+	End Function
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	AdjustArgs
+	'//  Purpose:	Specify hardlink properties when appropriate
+	'//---------------------------------------------------------------------------
+	Function AdjustArgs(sMode, sStatePath, sBaseArgs)
+
+		' Default is to use arguments untouched
+
+		AdjustArgs = sBaseArgs
+		If (not bUseHardlinks) or oEnvironment.Item("DeploymentType") = "REPLACE" then
+
+			' Add an encryption key if specified
+
+			If oEnvironment.Item("ForceEncryption") = "YES" and oEnvironment.Item("UserDataKey") <> "" then
+				AdjustArgs = AdjustArgs & " /encrypt /key:" & oEnvironment.Item("UserDataKey")
+			End if
+
+
+			' Only use hardlinks for non-replace scenarios
+
+			Exit Function
+
+		ElseIf Left(sStatePath, 2) = "\\" then
+
+			' Add an encryption key if specified
+
+			If oEnvironment.Item("ForceEncryption") = "YES" and oEnvironment.Item("UserDataKey") <> "" then
+				AdjustArgs = AdjustArgs & " /encrypt /key:" & oEnvironment.Item("UserDataKey")
+			End if
+
+
+			' Only use hardlinks for local paths
+
+			Exit Function
+
+		Else
+
+			' Hardlinks are allowed and using a local path, so add the parameters
+			' if they aren't already present
+			If Instr(1, sBaseArgs, "/hardlink") = 0 then
+				If sMode = "CAPTURE" then
+					AdjustArgs = AdjustArgs & " /hardlink /efs:hardlink"
+				ElseIf oFSO.FileExists(sStatePath & "\USMT\hardlink.main") then
+					AdjustArgs = AdjustArgs & " /hardlink"
+				End if
+			End if
+			If Instr(1, AdjustArgs, "/hardlink") <> 0 and Instr(1, sBaseArgs, "/nocompress") = 0 then
+				AdjustArgs = AdjustArgs & " /nocompress"
+			End if
+		End if
+
+	End Function
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	RunWithProgress
+	'//  Purpose:	Runs the specified command and displays progress
+	'//---------------------------------------------------------------------------
+	Function RunWithProgress(sCmd, sProgressFileName)
+
+		Dim oExec
+		Dim lastHeartbeat
+		Dim lastStart
+		Dim iHeartbeat
+		Dim iMinutes
+		Dim iOffset
+		Dim oProgressFile
+		Dim sNewText
+		Dim arrNewLines
+		Dim i
+		Dim arrValues
+
+
+		' Initialize the last heartbeat time (start the timer) and interval
+
+		lastHeartbeat = Now
+		iHeartbeat = 5
+
+
+		' Start the command
+
+		oLogging.CreateEntry "About to run command: " & sCmd, LogTypeInfo
+		lastStart = Now
+		Set oExec = oShell.Exec(sCmd)
+		Do While oExec.Status = 0
+
+			' Sleep 2 seconds
+
+			WScript.Sleep 2000
+
+
+			' See if it is time for a heartbeat
+
+			If iHeartbeat > 0 and DateDiff("n", lastHeartbeat, Now) > iHeartbeat then
+				iMinutes = DateDiff("n", lastStart, Now)
+				oLogging.CreateEvent 41003, LogTypeInfo, "ZTI Heartbeat: command has been running for " & CStr(iMinutes) & " minutes (process ID " & oExec.ProcessID & ")", Array(iMinutes)
+				lastHeartbeat = Now
+			End if
+
+
+			' Open the progress file and get the new lines
+
+			If oFSO.FileExists(sProgressFileName) then
+
+				On Error Resume Next
+
+				If oFSO.GetFile(sProgressFileName).Size > iOffset then
+
+					' Read the new lines
+
+					Set oProgressFile = oFSO.OpenTextFile(sProgressFileName, ForReading)
+					oProgressFile.Skip iOffset
+					sNewText = oProgressFile.ReadAll
+					iOffset = iOffset + Len(sNewText)
+					oProgressFile.Close
+
+
+					' Process the lines
+
+					On Error Goto 0
+					arrNewLines = Split(sNewText, vbCrLf)
+					For i = UBound(arrNewLines) - 1 to 0 Step -1
+
+						' Find the first total percentage completed message, then throw away the rest
+
+						arrValues = Split(arrNewLines(i), ",", 5)
+						If UBound(arrValues) >= 4 and Instr(arrValues(3), "totalPercentageCompleted") > 0 then
+							oLogging.ReportProgress "User state is being processed", CInt(arrValues(4))
+							Exit For
+						End if
+
+					Next
+															
+				End if
+
+				On Error Goto 0
+
+			End if
+		
+		Loop
+
+
+		' Make sure we hit 100%
+
+		oLogging.ReportProgress "USMT execution completed", 100
+
+
+		' Return the exit code to the caller
+
+		oLogging.CreateEntry "Return code from command = " & oExec.ExitCode, LogTypeInfo
+		RunWithProgress = oExec.ExitCode
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	UseLocal
+	'//  Purpose:	Determine if user state can be stored locally or not
+	'//---------------------------------------------------------------------------
+	Function UseLocal()
+
+		Dim iRetVal
+		Dim oSizeFile, sLine, arrColumns, iStateSize, iAvailableSize, iImageSize, iNeededSize, iTotalSize, dMultiplier, sDrive
+		Dim bStoreLocal
+		Dim sSizeFile
+
+
+		bStoreLocal = false
+
+
+		' See if an estimate file can be located.
+
+		sSizeFile = ""
+		If oFSO.FileExists(oUtility.LogPath & "\usmtestimate\usmt3\usmtsize.txt") then   ' USMT 3.0 name
+			sSizeFile = oUtility.LogPath & "\usmtestimate\usmt3\usmtsize.txt"
+		ElseIf oFSO.FileExists(oUtility.LogPath & "\usmtestimate\usmtsize.txt") then  ' USMT 2.6 name
+			sSizeFile = oUtility.LogPath & "\usmtestimate\usmtsize.txt"
+		ElseIf oFSO.FileExists(oUtility.LogPath & "\usmtestimate\USMT\usmtsize.txt") then  ' USMT 4.0 name
+			sSizeFile = oUtility.LogPath & "\usmtestimate\usmt\usmtsize.txt"
+		Else
+			sSizeFile = ""
+		End if
+
+
+		if sSizeFile <> "" then
+
+			' Found the file, retrieve the size from the first line, second value.
+
+			Set oSizeFile = oFSO.OpenTextFile(sSizeFile, ForReading, True)
+			sLine = oSizeFile.ReadLine
+			arrColumns = Split(sLine, vbTab)
+			iStateSize = Int(arrColumns(1) / 1048576) + 1   ' Round up
+			oLogging.CreateEntry "Estimated size of user state data (in MB) = " & iStateSize, LogTypeInfo
+			oEnvironment.Item("USMTEstimate") = iStateSize
+
+
+			' Get the available space on drive C:
+
+			sDrive = Left(oUtility.LogPath,2)
+			iAvailableSize = Int(oFSO.GetDrive(sDrive).FreeSpace / 1048576) - 1  ' Round down
+			oLogging.CreateEntry "Available space on drive C: for user state capture, Windows PE, and logs = " & iAvailableSize, LogTypeInfo
+
+
+			' Make sure there is currently enough space for the user state (with 10% fudge factor), including 150MB for WinPE and logs.  If there is, then do more calculations.
+
+			If iAvailableSize > (iStateSize * 1.1 + 150) then
+
+				oLogging.CreateEntry "There is enough space to do a local user state capture, making sure the image will still fit.", LogTypeInfo
+
+
+				' Determine the multiplier
+
+				If oEnvironment.Item("ImageSizeMultiplier") <> "" then
+					dMultiplier = CSng(oEnvironment.Item("ImageSizeMultiplier"))
+					oLogging.CreateEntry "Using specified ImageSizeMultiplier = " & dMultiplier, LogTypeInfo
+				Else
+					dMultiplier = 2.5
+					oLogging.CreateEntry "Using default ImageSizeMultiplier = " & dMultiplier, LogTypeInfo
+				End if
+
+
+				' Guess at the expanded image size using the WIM file size
+
+				If oEnvironment.Item("ImageSize") <> "" then
+					iImageSize = CInt(oEnvironment.Item("ImageSize"))
+					oLogging.CreateEntry "Using specified image size = " & iImageSize, LogTypeInfo
+				ElseIf oFSO.FileExists(oEnvironment.Item("InstallFromPath")) then
+					oLogging.CreateEntry "Checking size of " & oEnvironment.Item("InstallFromPath"), LogTypeInfo
+					iImageSize = (Int(oFSO.GetFile(oEnvironment.Item("InstallFromPath")).Size / 1048576) + 1) * dMultiplier  ' Assume 2.5X compression
+					oLogging.CreateEntry "Estimated size of image (assuming " & dMultiplier & "X compression) = " & iImageSize, LogTypeInfo
+				ElseIf oFSO.FileExists(oEnvironment.Item("OSDPACKAGEPATH") & "\OS.WIM") then
+					oLogging.CreateEntry "Checking size of " & oEnvironment.Item("OSDPACKAGEPATH") & "\OS.WIM", LogTypeInfo
+					iImageSize = (Int(oFSO.GetFile(oEnvironment.Item("OSDPACKAGEPATH") & "\OS.WIM").Size / 1048576) + 1) * dMultiplier  ' Assume 2.5X compression
+					oLogging.CreateEntry "Estimated size of image (assuming " & dMultiplier & "X compression) = " & iImageSize, LogTypeInfo
+				Else
+					iImageSize = 7168  ' Throw a SWAG guess of 7GB
+					oLogging.CreateEntry "WARNING - Cannot determine image size, guessing 7GB", LogTypeWarning
+				End if
+
+
+				' Calc total required space, allowing a 10% fudge factor for state storage and 150MB for WinPE, logs, etc.
+
+				iNeededSize = (iStateSize * 1.1) + iImageSize + 150
+				oLogging.CreateEntry "Estimated total space needed on C: partion = " & iNeededSize, LogTypeInfo
+
+
+				' Get the size of C:
+
+				iTotalSize = Int(oFSO.GetDrive(sDrive).TotalSize / 1048576) - 1  ' Round down
+				oLogging.CreateEntry "Total space available on " & sDrive & " drive = " & iTotalSize, LogTypeInfo
+
+
+				' Enough space?
+
+				If iTotalSize > iNeededSize then
+					bStoreLocal = true
+					oLogging.CreateEntry "User state can be backed up locally.", LogTypeInfo
+				Else
+					oLogging.CreateEntry "Backing up user state locally would not leave enough space for the OS image.  State will be written to a network share.", LogTypeInfo
+				End if
+
+			Else
+
+				oLogging.CreateEntry "Unable to store user state information locally, not enough available disk space.", LogTypeInfo
+
+			End if
+
+		else
+
+			oLogging.CreateEntry  "Unable to determine if user state can be stored locally, assuming it must be remote.", LogTypeWarning
+
+		end if
+
+
+		UseLocal = bStoreLocal
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	ScanProgress
+	'//  Purpose:	Scan the USMT progress file to find the errors and warnings.
+	'//---------------------------------------------------------------------------
+	Function ScanProgress(sProgressFile, sType)
+
+		Dim oProgressFile, sLine, arrParts
+		Dim iErrors, iWarnings
+		Dim iType
+
+
+		' Determine how many warnings and errors were logged.
+
+		iErrors = 0
+		iWarnings = 0
+
+		Set oProgressFile = oFSO.OpenTextFile(sProgressFile)
+		While not oProgressFile.AtEndOfStream
+			sLine = oProgressFile.ReadLine
+			arrParts = Split(sLine, ",", 5)
+			If Trim(arrParts(3)) = "error" then
+				If Instr(sLine, "action, Abort") > 0 then
+					iErrors = iErrors + 1
+					oLogging.CreateEntry "Fatal " & arrParts(4) & " error reported by USMT: " & sLine, LogTypeError
+				Else
+					iWarnings = iWarnings + 1
+					If iWarnings < 100 then
+						oLogging.CreateEntry "Non-fatal error " & arrParts(4) & " reported by USMT: " & sLine, LogTypeWarning
+					ElseIf iWarnings = 100 then
+						oLogging.CreateEntry "Too many USMT errors found, suppressing remaining messages.", LogTypeWarning
+					End if
+				End if
+			End if
+		WEnd
+
+
+		' Report how many errors and warnings were found.
+
+		If iErrors > 0 then
+			iType = LogTypeError
+		ElseIf iWarnings > 0 then
+			iType = LogTypeWarning
+		Else
+			iType = LogTypeInfo
+		End if
+		oLogging.CreateEvent 41010, iType, "ZTI USMT " & sType & " reported " & iErrors & " errors and " & iWarnings & " warnings.", Array(sType, iErrors, iWarnings)
+
+	End Function
+
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	InstallUSMT
+	'//  Purpose:	Copy the USMT files locally
+	'//---------------------------------------------------------------------------
+	Function InstallUSMT
+		Dim sDestPath
+		
+
+		' Copy the files locally
+
+		sDestPath = oUtility.LocalRootPath & "\USMT\" & oEnvironment.Item("Architecture")
+		oUtility.VerifyPathExists sDestPath
+		oUtility.RunWithHeartbeat "cmd.exe /c xcopy /iesryhd """ & sUSMTPath & """ """ & sDestPath & """ 1>> " & oLogging.LogPath & "\ZTIUserState_xcopy.log 2>>&1 "
+
+		' Workaround for USMT4 bug in Windows 7 AIK
+		
+		If oEnvironment.Item("DeploymentMethod") = "SCCM" and oEnvironment.Item("OSVersion") = "XP" and sUSMTVersion = "USMT4" then
+			oUtility.RunWithHeartbeat "cmd.exe /c xcopy /iesryhd """ & sUSMTPath &"\DlManifests"" """ & oEnv("SystemRoot") & "\system32\DlManifests" &""" 1>> " & oLogging.LogPath &"\ZTIUserState_xcopy.log 2>>&1 "
+		End if
+
+		InstallUSMT = sDestPath
+		
+	End Function
+	
+	
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	DetermineOSDStateStorePath
+	'//  Purpose:	Determine the path to be used for state capture or restore
+	'//---------------------------------------------------------------------------
+	Function DetermineOSDStateStorePath(sPhase)
+
+		Dim bUseNetwork
+
+
+		' If this is an estimate, just return blank
+
+		If sPhase = "ESTIMATE" then
+			DetermineOSDStateStorePath = ""
+			Exit Function
+		End if
+
+
+		' If OSDStateStorePath is already set, return that (fixing local paths if necessary)
+
+		If oEnvironment.Item("OSDStateStorePath") <> "" then
+			If Mid(oEnvironment.Item("OSDStateStorePath"), 2, 1) = ":" and sPhase = "RESTORE" then
+				oEnvironment.Item("OSDStateStorePath") = GetUserStateDrive(oEnvironment.Item("OSDStateStorePath"))
+			End if
+			DetermineOSDStateStorePath = oEnvironment.Item("OSDStateStorePath")
+			Exit Function
+		End if
+
+
+		' If StatePath was set by the Lite Touch wizard, use that path
+
+		If oEnvironment.Item("StatePath") <> "" then
+			oEnvironment.Item("OSDStateStorePath") = oEnvironment.Item("StatePath")
+
+		' If UserDataLocation is set to a UNC path (typically via CustomSettings.ini, use that path
+
+		ElseIf Left(oEnvironment.Item("UserDataLocation"), 2) = "\\" then
+			oEnvironment.Item("OSDStateStorePath") = oEnvironment.Substitute(oEnvironment.Item("UserDataLocation"))
+
+		' If UserDataLocation points to a local path, use it
+
+		ElseIf Mid(oEnvironment.Item("UserDataLocation"), 2, 1) = ":" then
+			oEnvironment.Item("OSDStateStorePath") = oEnvironment.Item("UserDataLocation")
+
+		' Still no path?  Check based on the UserDataLocation specified
+
+		Else
+
+			' Figure out if we should use the network
+
+			If UCase(oEnvironment.Item("DeploymentType")) = "REPLACE" then
+				bUseNetwork = true
+			ElseIf sUSMTVersion <> "USMT3" then
+				' Hardlinks supported, always use local
+				bUseNetwork = false
+			Else
+				' Perform an estimate
+				iRetVal = DoStateCapture(oUtility.LogPath & "\usmtestimate", true, sBaseArgs)
+				If iRetVal = 0 then
+					If UseLocal then
+						bUseNetwork = false
+					Else
+						bUseNetwork = true
+					End if
+				Else
+					oLogging.CreateEntry "Unable to determine user state size, assuming it will fit locally.", LogTypeWarning
+					bUseNetwork = false
+				End if
+			End if
+
+
+			' Check specified user data location
+
+			Select Case UCase(oEnvironment.Item("UserDataLocation"))
+			Case "NETWORK"
+				If oEnvironment.Item("UDShare") <> "" then
+					If oEnvironment.Item("UDDir") = "" then
+						oEnvironment.Item("OSDStateStorePath") = oEnvironment.Substitute(oEnvironment.Item("UDShare") & "\" & oUtility.ComputerName)
+					Else
+						oEnvironment.Item("OSDStateStorePath") = oEnvironment.Substitute(oEnvironment.Item("UDShare") & "\" & oEnvironment.Item("UDDir"))
+					End if
+				Else
+					oLogging.CreateEntry "User state capture not possible, no network path (UDShare, UDDir) specified.", LogTypeError
+					DetermineOSDStateStorePath = ""
+					Exit function				
+				End if
+			Case Else
+				If bUseNetwork then
+					If oEnvironment.Item("UDShare") <> "" then
+						If oEnvironment.Item("UDDir") = "" then
+							oEnvironment.Item("OSDStateStorePath") = oEnvironment.Substitute(oEnvironment.Item("UDShare") & "\" & oUtility.ComputerName)
+						Else
+							oEnvironment.Item("OSDStateStorePath") = oEnvironment.Substitute(oEnvironment.Item("UDShare") & "\" & oEnvironment.Item("UDDir"))
+						End if
+					Else
+						oLogging.CreateEntry "User state capture not possible, no network path (UDShare, UDDir) specified.", LogTypeError
+						DetermineOSDStateStorePath = ""
+						Exit function				
+					End if
+				Else
+					oEnvironment.Item("OSDStateStorePath") = oUtility.StatePath
+				End if
+			End Select
+
+		End if
+
+
+		' If a network path is specified, try to connect to it
+
+		If Left(oEnvironment.Item("OSDStateStorePath"), 2) = "\\" then
+			oUtility.ValidateConnection oEnvironment.Item("OSDStateStorePath")
+		End if
+
+
+		' If a local path is specified, make sure we still have the right drive letter
+
+		If Mid(oEnvironment.Item("OSDStateStorePath"), 2, 1) = ":" and sPhase = "RESTORE" then
+			oEnvironment.Item("OSDStateStorePath") = GetUserStateDrive(oEnvironment.Item("OSDStateStorePath"))
+		End if
+
+
+		' Return the path
+
+		DetermineOSDStateStorePath = oEnvironment.Item("OSDStateStorePath")
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	GetUserStateDrive
+	'//  Purpose:	Perform a state capture or estimate as requested
+	'//---------------------------------------------------------------------------
+	Function GetUserStateDrive(sStatePath)
+		Dim sNewStatePath
+		Dim iRetVal, oDrive, oDrives
+
+
+		oLogging.CreateEntry "Starting search for user state at path " & Mid(sStatePath, 3), LogTypeInfo
+	 
+		For each oDrive in oFSO.Drives
+
+			oLogging.CreateEntry "Checking for " & oDrive.Path & Mid(sStatePath, 3), LogTypeInfo
+
+			If oDrive.IsReady then
+				If oFSO.FolderExists(oDrive.Path & Mid(sStatePath, 3)) then
+
+					' If we can find a hardlink state store that is tagged as the "main" store, we want to use that.
+
+					If oFSO.FileExists(oDrive.Path & Mid(sStatePath, 3) & "\USMT\hardlink.main") then
+						oLogging.CreateEntry "Found primary hardlink folder at " & oDrive.Path & Mid(sStatePath, 3), LogTypeInfo
+						GetUserStateDrive = oDrive.Path & Mid(sStatePath, 3)
+						Exit Function
+					ElseIf oFSO.FolderExists(oDrive.Path & Mid(sStatePath, 3) & "\USMT") or oFSO.FolderExists(oDrive.Path & Mid(sStatePath, 3) & "\USMT3") then
+						oLogging.CreateEntry "Found user state at " & oDrive.Path & Mid(sStatePath, 3), LogTypeInfo
+						If sNewStatePath = "" then
+							sNewStatePath = oDrive.Path & Mid(sStatePath, 3)
+						End if
+					End if
+
+				End if
+			End if
+
+		Next
+		
+
+		' If no store found, log an error.
+
+		If sNewStatePath = "" then
+			oLogging.CreateEntry "The search for a user state drive failed", LogTypeInfo
+			GetUserStateDrive = sStatePath
+			Exit Function
+		End if
+
+
+		' Return the first state store found
+
+		oLogging.CreateEntry "State store at " & sNewStatePath & " will be used.", LogTypeInfo
+		GetUserStateDrive = sNewStatePath
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	VerifyWinPEWinDir
+	'//  Purpose:	Check to see if the OSDWinPEWINDIR path is valid
+	'//---------------------------------------------------------------------------
+	Function VerifyWinPEWinDir
+
+		Dim iRetVal
+
+		If oEnvironment.Item("OSDWinPEWINDIR") = "" Then
+			VerifyWinPEWINDIR = Failure
+			Exit Function
+		Else
+			If oFSO.FolderExists(oEnvironment.Item("OSDWinPEWINDIR")) Then
+				VerifyWinPEWinDir = Success
+			Else
+				VerifyWinPEWinDir = Failure
+				Exit Function
+			End If
+		End If
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	DetermineWinPEWinDir
+	'//  Purpose:	Find the Windows installation path to be used for offline capture
+	'//---------------------------------------------------------------------------
+	Function DetermineWinPEWinDir
+		Dim iRetVal, oDrive, oDiskPartition, oAssocs, Assoc, winDrive
+
+
+		' If the original disk index and partition were already determined, used those
+		' as long as they can be validated.
+
+		If oEnvironment.Item("OriginalPartitionIdentifier") <> "" then
+
+			oLogging.CreateEntry "Determining the path to Windows based on Original Disk and Partition configuration.",LogTypeInfo
+
+			winDrive = oUtility.GetDriveFromTag ( "OriginalPartitionIdentifier" )
+				
+			If winDrive = "" or isEmpty(winDrive) then
+				oLogging.CreateEntry "OriginalPartitionIdentifier did not return any drives...", LogTypeInfo
+			ElseIf oFSO.FolderExists(WinDrive & "\Windows") Then
+				oEnvironment.Item("OSDWinPEWinDir") = winDrive & "\Windows"
+			ElseIf oFSO.FolderExists(WinDrive & "\Winnt") Then
+				oEnvironment.Item("OSDWinPEWinDir") = winDrive & "\Winnt"
+			End If
+					
+		Else  ' original drive and partition not set, need to figure the path
+
+			For each oDrive in oFSO.Drives
+				If oDrive.DriveType = 2 then
+					If oDrive.IsReady Then
+
+						' Find the Windows folder
+
+						If oFSO.FolderExists(oDrive.Path & "\Windows") Then
+							oEnvironment.Item("OSDWinPEWinDir") = oDrive.Path & "\Windows"
+							Exit For
+						ElseIf oFSO.FolderExists(WinDrive & "\Winnt") Then
+							oEnvironment.Item("OSDWinPEWinDir") = oDrive.Path & "\Winnt"
+							Exit For
+						End If
+
+					End If
+				End if
+			Next
+
+
+		End if
+
+		If oEnvironment.Item("OSDWinPEWinDIR") = "" Then
+			oLogging.CreateEntry "Unable to locate a Windows installation for offline state capture", LogTypeInfo
+			DetermineWinPEWinDIR = Failure
+		Else
+			oLogging.CreateEntry "User state will be captured from drive " & Left(oEnvironment.Item("OSDWinPEWinDIR"),1), LogTypeInfo
+			DetermineWinPEWiNDIR = Success
+		End If
+
+	End Function
+
+End Class
+	</script>
+</job>

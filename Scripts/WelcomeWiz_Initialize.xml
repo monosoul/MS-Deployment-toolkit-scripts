@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      WelcomeWiz_Initialize.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Display progress during initialization (rules processing)
+' // 
+' // ***************************************************************************
+
+-->
+<Wizard>
+	<Global>
+		<CustomScript>WelcomeWiz_Initialize.vbs</CustomScript>
+		<HideNavigation>true</HideNavigation>
+	</Global>
+
+
+	<Pane id="Initializing" title="Processing Custom Settings">
+
+		<ButtonNext>
+			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>]]></Label>
+		</ButtonNext>
+		<ButtonCancel>
+			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" ><U>R</U>eboot</button>]]></Label>
+		</ButtonCancel>
+		<ButtonPrev>
+			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >B</U>ack</button>]]></Label>
+		</ButtonPrev>
+		<HideBackNext>true</HideBackNext>
+
+		<Body><![CDATA[
+
+			<div id="spacer" style="height: 100px"></div>
+			<div style="text-align: center;">
+				<div class=ProgressBarOutter style="border: 1px solid black; width: 500px; height: 30px; Background-color: White;"><div id=MyProgress class=ProgressBarInner style="Background-Color: blue;"></div></div></p>
+				<div id=ProgressMessage></div>
+			</div>
+
+		]]>
+		</Body>
+		<Initialization>InitializeProgress</Initialization>
+	</Pane>
+
+</Wizard>

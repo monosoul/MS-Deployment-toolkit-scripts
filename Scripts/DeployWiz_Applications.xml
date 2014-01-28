@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_Initialization.vbs</CustomScript>
+		<CustomScript>DeployWiz_Applications.vbs</CustomScript>
+		<CustomStatement><![CDATA[ IsThereAtLeastOneApplicationPresent ]]> </CustomStatement>
+	</Global>
+
+	<Pane id="ApplicationSelection" title="Applications">
+		<Body>
+		<![CDATA[
+      <H1>Select one or more applications to install.</H1>
+	  
+	  
+		<div class=TreeList id=AppListBox style="height: expression( GetDynamicListBoxSize(this) );">
+
+			<!-- List goes here -->
+
+		</div>
+
+		<input type=hidden Name=Applications disabled value="" />
+		<input type=hidden Name=Applications disabled value="" />
+
+			]]>
+		</Body>
+		<Initialization><![CDATA[InitializeApplicationList]]></Initialization>
+	</Pane>
+
+
+	<Pane id="AdministratorPassword">
+		<Condition><![CDATA[UCase(Property("SkipAdminPassword"))<>"YES" and UCase(Property("DeploymentType"))<>"REPLACE"]]></Condition>
+		<Body>
+		<![CDATA[
+      <H1>Administrator Password.</H1>
+
+
+<p>This password will be used for logging onto the computer after a restart.</p>
+Administrator Password: <br/>
+<input type=password id="Password1" name="AdminPassword"  size=20 language=vbscript onchange=ValidatePassword onpropertychange=ValidatePassword>
+<label class=ErrMsg For=Password1>* Required (MISSING)</label></br>
+
+Please confirm Administrator Password: <br/>
+<input type=password id="Password2" size=20 language=vbscript onchange=ValidatePassword onpropertychange=ValidatePassword>
+<label id=NonMatchPassword class=ErrMsg>ERROR! Passwords do not match!</label></br>
+</p>
+
+			]]>
+		</Body>
+		<Initialization><![CDATA[ Password2.Value = Password1.Value ]]></Initialization>
+		<Validation><![CDATA[ValidatePassword]]></Validation>
+	</Pane>
+</Wizard>

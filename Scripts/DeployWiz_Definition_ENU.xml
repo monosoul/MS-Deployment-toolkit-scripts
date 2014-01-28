@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+
+		<CustomStatement><![CDATA[ document.title =  "Windows Deployment Wizard" ]]> </CustomStatement>
+
+		<Initialization>DeployWiz_Initialization.vbs</Initialization>
+		<Validation>DeployWiz_Validation.vbs</Validation>
+
+	</Global>
+
+	<!-- ************************************************************** -->
+	<!-- ************************************************************** -->
+
+	<Pane id="SelectTaskSequence" reference="DeployWiz_SelectTS.xml">
+		<Condition><![CDATA[UCASE(Property("SkipTaskSequence"))<>"YES" ]]></Condition>
+	</Pane>
+
+
+	<Pane id="ComputerName" reference="DeployWiz_ComputerName.xml">
+		<Condition><![CDATA[UCase(Property("SkipDomainMembership"))<>"YES" or UCase(Property("SkipComputerName"))<>"YES"]]></Condition>
+		<Condition><![CDATA[Property("DeploymentType")<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and Property("DeploymentType") <> "StateRestore" ]]></Condition>
+	</Pane>
+
+
+	<Pane id="UserData" reference="DeployWiz_UserData.xml">
+		<Condition><![CDATA[ (Property("DeploymentType") = "REFRESH" or Property("DeploymentType") = "REPLACE") and UCase(Property("SkipUserData"))<>"YES" and Property("DeploymentType") <> "StateRestore"]]></Condition>
+		<Condition><![CDATA[ Instr(1, oEnvironment.Item("ImageFlags"), "SERVER", 1) = 0  ]]></Condition>
+		<Condition><![CDATA[ ucase(oEnvironment.Item("IsServerOS")) <> "TRUE" ]]></Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@name='Capture User State']", "ZTIUserState.wsf" ) ]]></Condition>
+	</Pane>
+
+
+	<Pane id="OfflineUserData" reference="DeployWiz_OfflineData.xml">
+		<Condition><![CDATA[ UCase(Property("SkipUserData"))<>"YES" and Property("DeploymentType") = "NEWCOMPUTER" ]]></Condition>
+		<Condition><![CDATA[ Instr(1, oEnvironment.Item("ImageFlags"), "SERVER", 1) = 0  ]]></Condition>
+		<Condition><![CDATA[ ucase(oEnvironment.Item("IsServerOS")) <> "TRUE" ]]></Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@name='Offline User State Capture']", "ZTIUserState.wsf" ) ]]></Condition>
+	</Pane>
+
+
+	<Pane id="UserDataRestore" reference="DeployWiz_UserDataRestore.xml">
+		<Condition><![CDATA[ Property("USMTOfflineMigration") <> "TRUE" ]]></Condition>
+		<Condition><![CDATA[ UCase(Property("SkipUserData"))<>"YES" and (Property("DeploymentType")="NEWCOMPUTER" or Property("DeploymentType") = "StateRestore") and Property("DeploymentType")<>"CUSTOM" ]]></Condition>
+		<Condition><![CDATA[ Instr(1, oEnvironment.Item("ImageFlags"), "SERVER", 1) = 0  ]]></Condition>
+		<Condition><![CDATA[ ucase(oEnvironment.Item("IsServerOS")) <> "TRUE" ]]></Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@name='Restore User State']", "ZTIUserState.wsf" ) ]]></Condition>
+	</Pane>
+
+
+	<Pane id="ComputerBackup" reference="DeployWiz_ComputerBackup.xml">
+		<Condition><![CDATA[ Property("DeploymentType") <> "NEWCOMPUTER" and Property("DeploymentType") <> "CUSTOM" and Property("DeploymentType") <> "STATERESTORE" and (Property("DeploymentType") = "REFRESH" or Property("DeploymentType") = "REPLACE") and UCase(Property("SkipComputerBackup"))<>"YES"]]></Condition>
+	</Pane>
+
+
+	<Pane id="ProductKey" reference="DeployWiz_ProductKeyVista.xml">
+		<Condition><![CDATA[ UCASE(Property("SkipProductKey"))<>"YES" and Property("DeploymentType")<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and Property("DeploymentType")<>"StateRestore" ]]></Condition>
+	</Pane>
+
+
+	<Pane id="SelectLanguagePack" reference="DeployWiz_LanguagePack.xml">
+		<Condition><![CDATA[ ucase(Property("SkipPackageDisplay")) <> "YES" and Property("DeploymentType")<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and Left(Property("ImageBuild"), 1) = "6" ]]> </Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@type='BDD_InstallUpdatesOffline' and @name='Apply Patches']", "ZTIPatches.wsf" )  ]]> </Condition>
+		<Condition><![CDATA[ CanDisplayPackageDialogBox  ]]> </Condition>
+	</Pane>
+
+
+	<Pane id="SelectLanguageUI" reference="DeployWiz_LanguageUI.xml">
+		<Condition><![CDATA[ UCase(Property("SkipLocaleSelection")) <> "YES" or UCase(Property("SkipTimeZone"))<>"YES" ]]> </Condition>
+		<Condition><![CDATA[ Property("DeploymentType")<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and Property("DeploymentType") <> "StateRestore" ]]> </Condition>
+	</Pane>
+
+
+	<Pane id="SelectRoles" reference="DeployWiz_Roles.xml">
+		<Condition><![CDATA[ ucase(Property("SkipRoles")) <> "YES" ]]> </Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@type='BDD_InstallRoles']", "ZTIOSRole.wsf" )  ]]> </Condition>
+		<Condition><![CDATA[ Property("ImageBuild") <> "" or Property("OSVersion") <> "WinPE" ]]> </Condition>
+	</Pane>
+
+
+	<Pane id="ApplicationSelection" reference="DeployWiz_Applications.xml">
+		<Condition><![CDATA[ UCase(Property("DeploymentType"))<>"REPLACE" ]]></Condition>
+		<Condition><![CDATA[ UCase(Property("SkipApplications"))<>"YES" ]]></Condition>
+		<Condition><![CDATA[ IsThereAtLeastOneApplicationPresent ]]></Condition>
+	</Pane>
+
+
+	<Pane id="AdministratorPassword" reference="DeployWiz_AdminPassword.xml">
+		<Condition><![CDATA[ UCase(Property("SkipAdminPassword"))<>"YES" and UCase(Property("DeploymentType"))<>"REPLACE" and UCase(Property("TaskSequenceTemplate")) <> "LTIOEM.XML"]]></Condition>
+	</Pane>
+
+	
+	<Pane id="AdministratorAccounts" reference="DeployWiz_AdminAccounts.xml">
+		<Condition><![CDATA[ UCase(Property("SkipAdminAccounts")) = "NO" and UCase(Property("DeploymentType"))<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and Property("JoinDomain") <> "" ]]></Condition>
+	</Pane>
+
+
+	<Pane id="CaptureImage" reference="DeployWiz_CaptureImage.xml">
+		<Condition><![CDATA[ Ucase(Property("SkipCapture"))<>"YES" and Property("DeploymentType") <> "REFRESH" and Property("JoinDomain") = "" and Property("DeploymentType") <> "REPLACE"]]></Condition>
+		<Condition><![CDATA[ FindTaskSequenceStep("//step[@name='Create WIM']", "ZTIBackup.wsf" ) ]]></Condition>
+	</Pane>
+
+
+	<Pane id="BitLocker" reference="DeployWiz_BitLocker.xml">
+		<Condition><![CDATA[ UCase(Property("IsBDE")) <> "TRUE" or Property("DeploymentType") <> "REFRESH" ]]></Condition>
+		<Condition><![CDATA[ Property("DeploymentType")<>"REPLACE" and Property("DeploymentType")<>"CUSTOM" and UCase(Property("SkipBitLocker")) <> "YES" and UCase(Property("DoCapture")) <> "YES" and UCase(Property("DoCapture")) <> "PREPARE" ]]></Condition>
+		<Condition><![CDATA[ Left(Property("ImageBuild"), 1) = "6" and oUtility.IsHighEndSKUEx( oEnvironment.Item("ImageFlags") ) ]]></Condition>
+	</Pane>
+
+
+	<Pane id="Credentials" reference="DeployWiz_Credentials.xml">
+		<Condition><![CDATA[ ((UserID_isDirty = TRUE or Property("UserID")="") or (Property("UserPassword")="") or (Property("UserDomain") = Property("OSDComputerName"))) and Property("DeploymentMethod") <> "MEDIA"]]></Condition>
+	</Pane>
+
+
+	<Pane id="Ready" reference="DeployWiz_Ready.xml">
+		<Condition><![CDATA[ UCase(Property("SkipSummary")) <> "YES"]]></Condition>
+	</Pane>
+
+</Wizard>

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   5.1.1642.01
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_UserData.vbs</CustomScript>
+	</Global>
+
+	<Pane id="UserData" title="User Data">
+		<Body>
+         <![CDATA[
+<H1>Specify where to save your data and settings.</H1>
+<table>
+	<tr>
+		<td>
+			<input type=radio name="UserDataLocation" id="UDRadio1"  value="AUTO" language=vbscript onclick=ValidateUserDataLocation  AccessKey=A>
+		</td>
+		<td>
+			<Label class="Larger" for=UDRadio1 language=vbscript ><u class=larger>A</u>utomatically determine the location.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<div>Let the system determine the best location based on available disk space.</div>
+			<br>
+			<input type=checkbox id="AllowLocal" checked onclick="javascript:UDRadio1.value= this.checked?'AUTO':'NETWORK';" AccessKey=L>
+			<Label for=AllowLocal>Allow data and settings to be stored <u>l</u>ocally when possible.</Label>
+		</td>
+	</tr>
+
+	<tr><td colspan=2>&nbsp;</td></tr>
+
+	<tr>
+		<td>
+			<input type=radio name="UserDataLocation" id="UDRadio2" Value="SpecifyLocation" language=vbscript onclick=ValidateUserDataLocation  AccessKey=S>
+		</td>
+		<td>
+			<Label class="Larger" for=UDRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<div>Save all configuration information for later restoration.</div>
+			<br>
+			<div>L<u>o</u>cation:  <label class=ErrMsg for=DataPath>* Required (MISSING)</label><label class=ErrMsg id=InvalidPath>* Invalid local path!</label></div>
+			<input type=text id="DataPath" size=65 disabled language=vbscript onpropertychange=ValidateUserDataLocation AccessKey=O>
+			<input type="button" id="DataPathBrowse" onclick="javascript:DataPath.value = BrowseForFolder(DataPath.value);" Value="Browse" disabled />
+		</td>
+	</tr>
+
+	<tr><td colspan=2>&nbsp;</td></tr>
+
+	<tr>
+		<td>
+			<input type=radio name="UserDataLocation" id="UDRadio3" checked value="NONE" language=vbscript onclick=ValidateUserDataLocation  AccessKey=V>
+		</td>
+		<td>
+			<Label class="Larger" for=UDRadio3 language=vbscript >Do not sa<u class=larger>v</u>e data and settings.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td></td>
+		<td>
+			<p>All user data and settings will be lost.</p>
+		</td>
+	</tr>
+</table>
+		]]>
+		</Body>
+		<Initialization><![CDATA[InitializeUserDataLocation]]></Initialization>
+		<Validation><![CDATA[ValidateUserDataLocation]]></Validation>
+	</Pane>
+
+</Wizard>

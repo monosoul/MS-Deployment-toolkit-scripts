@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_DeployRoot.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   DeployRoot wizard pane
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+
+	<Global>
+		<CustomScript>WelcomeWiz_DeployRoot.vbs</CustomScript>
+	</Global>
+
+	<Pane id="DeployRoot">
+
+		<Initialization><![CDATA[ InitializeDeployRoot ]]> </Initialization>
+		<Validation><![CDATA[ ValidateDeployRoot ]]> </Validation>
+		<ButtonNext><Label><![CDATA[<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>]]></Label></ButtonNext>
+		<HideBackNext>false</HideBackNext>
+
+		<Body>
+		<![CDATA[
+
+
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+
+           <!-- Use the H1 Style for titles at the top of the page -->
+           <H1>Specify which deployment share to use.<H1>
+
+           <p>Before this wizard can continue, it will need to know the path of a Deployment Share.</p>
+           <span id=DisplayLocal>
+              <table width=95% >
+                <tr >
+                  <td align=right>
+                    <input type=radio name="ConnectionType" id="RadioCT1" checked accesskey=L language=vbscript  onclick=DisplayValidateDeployRoot>
+                  </td>
+                  <td>
+                    <label class=Larger for=RadioCT1 language=vbscript >Select my deployment share based on my site <u class=larger>L</u>ocale:</label>
+                  </td>
+                </tr>
+                <tr>
+                  <td width=0px>
+                  </td>
+                  <td>
+                      <u>S</u>ite:<br/>
+                      <select id=SiteList class=WideEdit datasrc="#Sites" datafld="Description" accesskey=s onchange=ChangeServerFromSite>
+                          <option value="" >Select a Site:</option>
+                      </select>
+                      <div><label class=ErrMsg for=SiteList>* Required (MISSING)</label>&nbsp;</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan=2> &nbsp;</td>
+                </tr>
+              <tr>
+                <td align=right>
+                  <input type=radio name="ConnectionType" id="RadioCT2" accesskey=M language=vbscript  onclick=DisplayValidateDeployRoot>
+                </td>
+                <td>
+                  <label class=Larger for=RadioCT2 language=vbscript ><u class=larger>M</u>anually specify the server location:</label>
+                </td>
+              </tr>
+              </table>
+            </span>
+
+            <table width=95%>
+              <tr>
+                <td width=0px>
+                </td>
+                <td>
+                  <span>Deployment Share: (format: "\\Server\share"   or   "\\server" </span>
+                  <input type=text id=DeployRoot name=DeployRoot class=wideedit />
+                  <div><label class=ErrMsg for=DeployRoot>* Required (MISSING)</label>&nbsp;</div>
+                </td>
+              </tr>
+
+<!--
+              <tr>
+                <td colspan=2> &nbsp;</td>
+              </tr>
+
+              <tr>
+                <td align=right>
+                  <input type=checkbox name=DisplayCustomWizard id=UseCustom accesskey=A onchange=DisplayValidateDeployRoot onpropertychange=DisplayValidateDeployRoot />
+                </td>
+                <td>
+                  <label for=UseCustom> Display <u>A</u>dvanced settings during wizard.</label>
+                </td>
+              </tr>
+-->
+            </table>
+
+		]]>
+
+		</Body>
+
+	</Pane>
+
+</Wizard>

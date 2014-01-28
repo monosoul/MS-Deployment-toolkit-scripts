@@ -1,0 +1,415 @@
+<job id="UDIWizard">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      UDIWizard.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Display a wizard during a ConfigMgr task sequence
+' // 
+' // Usage:     cscript UDIWizard.wsf /definition:UDIWizard_Config.xml [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class UDIWizard
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim sConfigFileName
+		Dim sConfigFilePath
+
+		Dim oConfigXML
+
+		Dim sCmd
+		Dim sWorkingDir
+		Dim arrAdmins
+		Dim sAdmin
+		Dim oAdministrators
+		Dim oPreflight
+		Dim oFilename
+		Dim oParameters
+		Dim sFilename
+		Dim sParameters
+		Dim bRemove
+		Dim oTSProgressUI
+		Dim sAppFile
+
+		Dim oProcesses, oProcess
+		Dim sProcessName
+		Dim sWizardStage
+
+
+		iRetVal = Success
+
+
+		' Find and copy the specified XML config file
+
+		If oUtility.Arguments.Exists("Definition") then
+			sConfigFileName = oUtility.Arguments("Definition")
+		Else
+			sConfigFileName = "UDIWizard_Config.xml"
+		End if
+
+		If Left(UCase(sConfigFileName), 4) = "HTTP" then
+
+			' Download the specified configuration file
+
+			sConfigFilePath = oLogging.LogPath & "\UDIWizard_Config.xml"
+			iRetVal = oUtility.InternetFileDownload(sConfigFileName, sConfigFilePath)
+			TestAndFail iRetVal, 10401, "Download configuration file " & sConfigFileName
+
+
+			' Download the corresponding .app file
+
+			sAppFile = sConfigFilePath & ".app"
+			iRetVal = oUtility.InternetFileDownload(sConfigFileName & ".app", sAppFile)
+
+		Else
+			' Make sure we have a connection
+
+			If Left(sConfigFileName, 2) = "\\" then
+				oUtility.ValidateConnection sConfigFileName
+			End if
+
+
+			' Find the config file
+
+			iRetVal = oUtility.FindFile(sConfigFileName, sConfigFilePath)
+			TestAndFail iRetVal, 10402, "Find configuration file " & sConfigFileName
+
+
+			' Find the corresponding .app file
+
+			iRetVal = oUtility.FindFile(sConfigFileName & ".app", sAppFile)
+
+		End if
+
+		' Load the XML file
+
+		Set oConfigXML = oUtility.CreateXMLDOMObjectEx(sConfigFilePath)
+
+
+		' Figure out what process to use
+
+		sProcessName = "explorer.exe"
+		Set oProcesses = objWMI.ExecQuery("select * from Win32_Process where Name='tsprogressui.exe'")
+		For each oProcess in oProcesses
+			sProcessName = "tsprogressui.exe"
+		Next
+		oLogging.CreateEntry "Using " & sProcessName & " for displaying wizard UI", LogTypeInfo
+
+
+		' Set the working directory
+
+		'If oEnvironment.Item("OSVersion") = "WinPE" then
+		If UCase(oEnv("PROCESSOR_ARCHITECTURE")) = "AMD64" then
+			sWorkingDir = oEnvironment.Substitute("%DEPLOYROOT%\Tools\x64")
+		Else
+			sWorkingDir = oEnvironment.Substitute("%DEPLOYROOT%\Tools\x86")
+		End if
+		oLogging.CreateEntry "Working directory: " & sWorkingDir, LogTypeInfo
+		oShell.CurrentDirectory = sWorkingDir
+
+
+		' Hide the progress UI
+
+		On Error Resume Next
+		Set oTSProgressUI = CreateObject("Microsoft.SMS.TSProgressUI") 
+		oTSProgressUI.CloseProgressDialog 
+		Set oTSProgressUI = Nothing 
+		On Error Goto 0
+
+
+		' Execute the appropriate wizard
+
+		If oConfigXML.DocumentElement.SelectNodes("//DLLs").Length > 0 then
+
+
+			' ===========================
+			' Setup Wizard Pre-Processing
+			' ===========================
+
+			
+			' Strip the incompatible pre-req checks
+
+			For each oPreflight in oConfigXML.DocumentElement.SelectNodes("//Pages/Page[@Name=""ConfigScanPage""]/Tasks/Task")
+
+				' Get the values from the appropriate child nodes
+
+				Set oFilename = oPreflight.SelectSingleNode("Setter[@Property=""filename""]")
+				If not oFilename is Nothing then
+					sFilename = LCase(oFilename.Text)
+				Else
+					sFilename = ""
+				End if
+
+				Set oParameters = oPreflight.SelectSingleNode("Setter[@Property=""parameters""]")
+				If not oParameters is Nothing then
+					sParameters = LCase(oParameters.Text)
+				Else
+					sParameters = ""
+				End if
+
+
+				' Check if this pre-req check should be removed
+	
+				bRemove = False
+				If oEnvironment.Item("OSVersion") = "WinPE" or Left(oEnvironment.Item("OSCurrentVersion"),1) = "5" then
+
+					' Remove items not applicable to Windows PE or XP
+
+					If Instr(sParameters, "osdbootcount") > 0 or Instr(sParameters, "osdbitlockerstate") > 0 then
+						bRemove = true
+					End if
+
+				End if
+
+				If oEnvironment.Item("OSVersion") = "WinPE" then
+
+					' Remove items not applicable to Windows PE
+
+					If Instr(sParameters, "osddiskcheck") > 0 or Instr(sParameters, "osd_getprinters") > 0 then
+						bRemove = true
+					End if
+					If Instr(sFilename, "acpower") > 0 then
+						bRemove = true
+					End if
+
+				End if
+
+				If Left(oEnvironment.Item("OSCurrentVersion"),1) = "5" then
+
+					' Remove items not applicable to XP
+
+					' No XP-specific removals at this point
+
+				End if
+
+
+				' Remove if required
+
+				If bRemove then
+					oLogging.CreateEntry "Removed preflight " & oPreflight.Attributes.getNamedItem("DisplayName").Value & " because it was not applicable.", LogTypeInfo
+					oPreflight.parentNode.removeChild oPreflight
+				End if
+
+			Next
+
+			' Save the updated XML file
+
+			oLogging.CreateEntry "Saving edited configuration file as " & oLogging.LogPath & "\OSDSetupWizard.xml", LogTypeInfo
+			oConfigXML.Save oLogging.LogPath & "\OSDSetupWizard.xml"
+
+
+			' Copy the app file to the same location
+
+			If oFSO.FileExists(sAppFile) then
+				oLogging.CreateEntry "Copying app file " & sAppFile & " to " & oLogging.LogPath & "\OSDSetupWizard.xml.app", LogTypeInfo
+				oFSO.CopyFile sAppFile, oLogging.LogPath & "\OSDSetupWizard.xml.app", true
+			Else
+				oLogging.CreateEntry "Warning: No corresponding app file found for the specified configuration file, wizard may not work properly.", LogTypeWarning
+			End if
+
+
+			' Build command for stage
+
+			If oEnvironment.Item("Stage") <> "" then
+				sWizardStage = oEnvironment.Item("Stage")
+			Else
+				sWizardStage = ucase(oEnvironment.Item("DeploymentType"))
+				If sWizardStage = "REPLACE" and oEnvironment.Item("OSVersion") = "WinPE" then
+					sWizardStage = sWizardStage & ".WinPE"
+				End if
+				If sWizardStage = "NEWCOMPUTER" and ucase(oEnvironment.Item("_SMSTSMediaType")) = "OEMMEDIA" then
+					sWizardStage = sWizardStage & ".Prestaged"
+				End if
+			End if
+
+			oLogging.CreateEntry "Selected wizard stage option: " & sWizardStage, LogTypeInfo
+
+
+			' Build the command line
+
+			sCmd = "ServiceUI.exe -process:" & sProcessName & " OSDSetupWizard.exe /xml:""" & oLogging.LogPath & "\OSDSetupWizard.xml"" /stage:"  & sWizardStage 
+
+
+			' Is a locale specified?  If so, append it to the command line
+
+			If oEnvironment.Item("UDILocale") <> "" then
+				sCmd = sCmd & " /locale:" & oEnvironment.Item("UDILocale")
+			End if
+
+
+			' =====================
+			' Wizard Execution
+			' =====================
+
+			oLogging.CreateEntry "About to run command: " & sCmd, LogTypeInfo
+
+			On Error Resume Next
+			iRetVal = oShell.Run(sCmd, 0, true)
+			If Err then
+				iRetVal = Err.Number
+				oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+			ElseIf iRetVal = 0 then
+				oLogging.CreateEntry "Successfully executed command " & sCmd & ", rc = " & CStr(iRetVal), LogTypeInfo
+			Else
+				TestAndLog iRetVal, "Non-zero return code executing command " & sCmd & ", rc = " & iRetVal
+			End if
+			On Error Goto 0
+
+
+			' ======================
+			' Wizard Post-Processing
+			' ======================
+
+			oLogging.CreateEntry "OSDTargetDrive = [" & oEnvironment.Item("OSDTargetDrive") & "]", LogTypeInfo
+			oLogging.CreateEntry "OSDDiskpart    = [" & oEnvironment.Item("OSDDiskpart") & "]", LogTypeInfo
+
+			If ucase(oEnvironment.Item("OSDDiskpart")) = "TRUE" then
+
+				' Any volume selected from the OSD wizard bay be overridden by the new disk partitioning structure.
+				oLogging.CreateEntry "OSDDiskpart is enabled, disregard Volume selection from UDI Wizard.", LogTypeInfo
+				oEnvironment.Item("OSDTargetDrive") = ""
+				oEnvironment.Item("OSDTargetSystemDrive") = ""
+
+			Else
+
+				oLogging.CreateEntry "OSDDiskpart is disabled, we can use OSDTargetDrive as the requested volume.", LogTypeInfo
+				oEnvironment.Item("OSDisk") = oEnvironment.Item("OSDTargetDrive")
+
+				' There may be a reboot during normal Task Sequence operation. Save the volume for use later.
+				oUtility.SetTagForDrive oEnvironment.Item("OSDTargetDrive"), "TargetPartitionIdentifier"
+			End if
+
+
+			' Split apart the administrator members and put them in a list
+
+			If oEnvironment.Item("OSDAddAdmin") <> "" then
+				arrAdmins = Split(Trim(oEnvironment.Item("OSDAddAdmin")), ";")
+				Set oAdministrators = oEnvironment.ListItem("Administrators")
+				For each sAdmin in arrAdmins
+					If not oAdministrators.Exists(sAdmin) then
+						oAdministrators.Add sAdmin, ""
+					End if
+				Next
+				oEnvironment.ListItem("Administrators") = oAdministrators
+			End if
+
+
+			' Any user state selected?  If so, set the needed variable values
+
+			If UCase(oEnvironment.Item("OSDRestoreData")) = "TRUE" and UCase(oEnvironment.Item("OSDHardLinks")) <> "TRUE" then
+				If UCase(oEnvironment.Item("OSDUserStateMode")) = "NETWORK" then  ' Restore from network
+					oEnvironment.Item("OSDStateStorePath") = oEnvironment.Item("SMSConnectNetworkFolderPath") & "\" & oEnvironment.Item("OSDDataSourceDirectory")
+				ElseIf UCase(oEnvironment.Item("OSDUserStateMode")) = "USB" then  ' Restore from USB
+					oEnvironment.Item("OSDStateStorePath") = oEnvironment.Item("OSDDataSourceDrive") & "\" & oEnvironment.Item("OSDDataSourceDirectory")
+				End if
+				If oEnvironment.Item("ForceEncryption") = "YES" then
+					oEnvironment.Item("OSDMigrateAdditionalRestoreOptions") = "/decrypt /key:" & oEnvironment.Item("OSDUserStateKeyPassword")
+				End if
+			End if
+
+
+			' If using hardlinks to do a refresh from the full OS, make sure the state store path is set
+			' now so that we have a place to copy the initial log files (before booting into PE to capture state).
+
+			If oEnvironment.Item("OSVersion") <> "WinPE" and oEnvironment.Item("OSDStateStorePath") = "" then
+				oEnvironment.Item("OSDStateStorePath") = oUtility.StatePath				
+			End if
+
+
+			' Set the UserLocale based on the InputLocale specified in the wizard
+
+			oEnvironment.Item("UserLocale") = oEnvironment.Item("InputLocale")
+
+
+			' Tell the task sequence to use offline migration
+
+			oEnvironment.Item("USMTOfflineMigration") = "TRUE"
+
+
+			' The wizard may not encoded all variables, ensure that they are encoded.
+
+			for each sCmd in array ( "BDEPIN" )
+				oEnvironment.Item(sCmd) = oEnvironment.GetOSDV4(sCmd)
+			next
+
+
+		ElseIf oConfigXml.DocumentElement.NodeName = "Wizard" then
+
+
+			' =====================
+			' HTA Wizard Processing
+			' =====================
+
+			' Run the wizard
+
+			sCmd = "ServiceUI.exe -process:" & sProcessName & " %WINDIR%\system32\MSHTA.exe " & oUtility.ScriptDir & "\Wizard.hta /definition:""" & sConfigFileName & """"
+			On Error Resume Next
+			iRetVal = oShell.Run(sCmd, 1, true)
+			If Err then
+				iRetVal = Err.Number
+				oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+			ElseIf iRetVal = 0 then
+				oLogging.CreateEntry "Successfully executed command " & sCmd & ", rc = " & CStr(iRetVal), LogTypeInfo
+			Else
+				TestAndLog iRetVal, "UDIWizard: Non-zero return code executing command " & sCmd & ", rc = " & iRetVal
+			End if
+			On Error Goto 0
+
+
+			' See if the wizard completed or was cancelled
+
+			If oEnvironment.Item("WizardComplete") <> "Y" then
+				oLogging.CreateEntry "The wizard was cancelled, setting OSDSetupWizCancelled = TRUE", LogTypeInfo
+				oEnvironment.Item("OSDSetupWizCancelled") = "TRUE"
+				iRetVal = -1
+			End if
+
+		Else
+
+			oLogging.ReportFailure "Invalid wizard configuration file specified.  The deployment will not proceed.", 10403
+
+		End if
+
+
+		' Exit with whatever return value was returned by the wizard
+
+		Main = iRetVal
+
+	End Function
+
+End Class
+
+   </script>
+</job>

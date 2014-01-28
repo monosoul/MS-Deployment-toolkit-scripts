@@ -1,0 +1,135 @@
+<job id="LTIOEM">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      LTIOEM.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Prepare contents of MDT on local Hard disk from removale media
+' //            for OEM deployments.
+' // 
+' // Usage:     cscript.exe [//nologo] LTIOEM.wsf [/debug:true] [/BdeInstall:TRUE]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class LTIOEM
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim iRetVal
+		Dim oShellMedia
+		Dim oTaskSequences
+		Dim oTaskSequence
+		Dim iRoboResult
+		Dim sTarget
+		Dim sCmd
+		Dim LTIOEM_TARGET
+
+		iRetVal = SUCCESS
+
+
+		' Main script processing
+
+		oLogging.CreateEntry "---------------- Begin OEM Preperation Script. ----------------", LogTypeInfo
+
+
+		'''''''''''''''''''''''''''''''''''''''''''''''''''
+		'
+		' Verify Local Source and Target exist
+		'
+
+		sTarget = oUtility.GetOSTargetDriveLetterEx(false)
+		If sTarget <> "" then
+			oLogging.CreateEntry "Target volume for OEM staging = " & sTarget, LogTypeInfo
+		Else
+			sTarget = GetFirstPossibleSystemDrive
+			oEnvironment.Item("DestinationOSInstallType") = "BYDRIVELETTER"
+			oEnvironment.Item("DestinationOSDriveLetter") = sTarget
+			oLogging.CreateEntry "Target volume for OEM staging (first possible) = " & sTarget, LogTypeInfo
+		End if
+
+		LTIOEM_TARGET =  Left(sTarget, 2) & "\"
+		sCmd = LTIOEM_TARGET
+		TestAndFail oFSO.FolderExists( sCmd ) , 6001, "Verify Drive " & sCmd
+
+		sCmd = oEnvironment.Item("DeployDrive") & "\" 
+		TestAndFail oFSO.FolderExists( sCmd ) , 6002, "Verify Drive " & sCmd
+
+		
+		'''''''''''''''''''''''''''''''''''''''''''''''''''
+		'
+		' Copy the contents of the Media Disk to the Target Drive
+		'
+
+		oLogging.ReportProgress "Copying contents of DVD to hard disk. May take a while...",10
+		sCmd = "robocopy.exe /E /A-:R /NP /LOG+:" & oLogging.LogPath & "\ltioem.txt "& left(oEnvironment.Item("DeployDrive"),2) & "\Deploy " & left(LTIOEM_TARGET,2) & "\Deploy"
+		iRoboResult = oUtility.RunWithHeartbeat ( sCmd )
+
+		' Interpret results and exit if Robocopy returned a fatal error
+		TestAndFail  (iRoboResult and 8) <>  8 , 6020, "Robocopy returned value: " & iRoboResult
+		TestAndFail (iRoboResult and 16) <> 16 , 6021, "Robocopy returned value: " & iRoboResult
+
+		'''''''''''''''''''''''''''''''''''''''''''''''''''
+		'
+		' Patch the local target
+		'
+
+		oLogging.CreateEntry "Disable the OEM Task Sequence here!", LogTypeInfo
+
+		TestAndFail oEnvironment.Item("TSGUID") <> "", 6010, "Test for TSGUID"
+
+		oLogging.CreateEntry "Open XML File: " & oEnvironment.Item("DeployRoot") & "\Control\TaskSequences.xml", LogTypeInfo
+		Set oTaskSequences = oUtility.CreateXMLDOMObjectEx(oEnvironment.Item("DeployRoot") & "\Control\TaskSequences.xml")
+		Set oTaskSequence = oTaskSequences.selectSingleNode("//ts[@guid='" & oEnvironment.Item("TSGUID") & "']")
+		
+		TestAndFail (not (oTaskSequence is Nothing)), iRetVal, "oTaskSequence is nothing"
+
+		oTaskSequence.attributes.getNamedItem("enable").value = "False"
+		oUtility.VerifyPathExists LTIOEM_TARGET & mid(oEnvironment.Item("DeployRoot"),4) & "\Control"
+		oLogging.CreateEntry "Save XML File: " & LTIOEM_TARGET & mid(oEnvironment.Item("DeployRoot"),4) & "\Control\TaskSequences.xml", LogTypeInfo
+		oTaskSequences.Save LTIOEM_TARGET & mid(oEnvironment.Item("DeployRoot"),4) & "\Control\TaskSequences.xml"
+
+		'''''''''''''''''''''''''''''''''''''''''''''''''''
+		'
+		' Finished!
+		'
+
+		oEnvironment.Item("_DoNotCleanLiteTouch") = "TRUE"
+		oLogging.CreateEntry "OEM.wsf completed successfully.", LogTypeInfo
+
+
+		'Cleanup and Exit
+
+		Main = iRetVal
+
+	End Function
+	
+
+End class
+
+
+	</script>
+</job>
+

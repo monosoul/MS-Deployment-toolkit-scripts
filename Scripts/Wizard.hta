@@ -1,0 +1,1100 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      Wizard.hta
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Display a wizard to the user
+' // 
+' // ***************************************************************************
+
+-->
+
+<head>
+	<title></title>
+	<meta content="text/VBScript" http-equiv="content-script-type" />
+	<meta name="vs_defaultClientScript" content="VBScript" />
+	<meta name="GENERATOR" content="Microsoft Visual Studio .NET 7.1">
+	<meta name="vs_targetSchema" content="http://schemas.microsoft.com/intellisense/ie5">
+	<meta http-equiv="MSThemeCompatible" CONTENT="Yes" />
+	<link href="Wizard.css" type="text/css" rel="stylesheet">
+
+	<HTA:APPLICATION ID="oWizard" APPLICATIONNAME="" ICON="Wizard.ico"
+		SCROLL="no"
+		SELECTION="no"
+		INNERBORDER="no"
+		BORDER="normal"
+		SINGLEINSTANCE="no"
+		SYSMENU="yes"
+		MAXIMIZEBUTTON="no"
+		MINIMIZEBUTTON="no"
+	/>
+	<script language="vbscript" type="text/vbscript" >
+	<!--
+
+	' Set the default size and location (Perform early)
+
+	window.resizeTo 775,568
+	window.moveTo Window.screen.width/2 - 775/2, Window.screen.height/2 - 568/2
+
+	-->
+	</script>
+	<script language="vbscript" type="text/vbscript" src="ZTIUtility.vbs"></script> 
+	<script language="vbscript" type="text/vbscript" src="WizUtility.vbs"> </script>
+	<script language="vbscript" type="text/vbscript" src="ZTIConfigFile.vbs"> </script>
+	<script language="vbscript" type="text/vbscript" src="ZTIDiskUtility.vbs"> </script>
+	<script language="vbscript" type="text/vbscript" src="ZTIDataAccess.vbs"> </script>
+	<script language="vbscript" type="text/vbscript" >
+	<!--
+
+Option Explicit
+
+Dim sNextPane
+Dim sCurrentPane
+Dim oXMLDoc
+Dim sRootDir
+Dim oProperties
+Dim oStack
+Dim bHasWarningLabels
+
+
+Sub FatalError ( Message )
+	oLogging.ReportFailure Message, 20001
+	Alert Message
+	window.close
+End sub
+
+''''''''''''''''''''''''''''''''''''
+'
+' Global Initialization
+'
+Sub WizardOnLoad
+	Dim i, item, oArguments
+	Dim sDefinition
+	Dim oReference, refItem
+	Dim oAttr, oNewAttr
+	Dim sNavigation 
+
+	' Control objects for Navigatin and Properties
+
+	Set oStack = CreateObject("Scripting.Dictionary")
+	Set oProperties = CreateObject("Scripting.Dictionary")
+	oProperties.CompareMode = vbTextCompare
+
+
+	' Parse the command line
+
+	oLogging.CreateEntry  "Not Wizard = " & oUtility.Arguments.Exists("NotWizard") ,LogTypeInfo
+
+
+	' Check for the Definition File
+
+	If oEnvironment.Item("Definition") = "" then
+
+		If not oUtility.Arguments.Exists("Definition") then
+			FatalError "Definition file not defined. Please call with /Defintion:<file>   CommandLine:" & vbNewLine & oWizard.CommandLine
+			exit sub
+		End if
+
+		oLogging.CreateEntry "Unable to read Definition from environment. Implement Workaround.", LogTypeWarning
+
+		If oFSO.FileExists(oUtility.Arguments.Item("Definition")) then
+			sDefinition = oUtility.Arguments.Item("Definition")
+		Elseif oUtility.FindFile(oUtility.Arguments.Item("Definition"), sDefinition) <> Success then
+			FatalError "Unable to find definition file:" & oUtility.Arguments.Item("Definition") & "   CommandLine:" & vbNewLine & oWizard.CommandLine
+			exit sub
+		End if
+
+	Elseif oFSO.FileExists(oEnvironment.Item("Definition")) then
+		sDefinition = oEnvironment.Item("Definition")
+	Elseif oUtility.FindFile(oEnvironment.Item("Definition"), sDefinition) <> Success then
+		FatalError "Unable to find definition file:" & oEnvironment.Item("Definition") & "   CommandLine:" & vbNewLine & oWizard.CommandLine
+		exit sub
+	End if
+
+
+	sRootDir = oFso.GetParentFolderName(sDefinition)
+	if sRootDir <> "" then sRootDir  = sRootDir & "\"
+	oLogging.CreateEntry "sRootDir:" & sRootDir, LogTypeVerbose
+	
+	Set oXMLDoc = oUtility.CreateXMLDOMObjectEx( sDefinition )
+	If IsEmpty(oXMLDoc) or (oXMLDoc is nothing) then
+		FatalError "Unable to Create MSXML2.DOMDocument(.6.0) Object."
+		Exit sub
+	End if
+
+
+	' Parse our XML Data Definition File
+
+	' Custom processing within an external file
+
+	For each item in oXMLDoc.SelectNodes("//Wizard/Global/(Initialization|Validation|CustomScript)")
+
+		if not oFso.FileExists(srootDir & Item.TExt) then
+			FatalError "Unable to load VBScript File: " & srootDir & Item.TExt
+			exit sub
+		end if
+
+		if not ExecuteWithErrorHandling(oFso.OpenTextFile(srootDir & Item.TExt ,ForReading,FALSE).ReadAll) then
+			' window.close
+			exit sub
+		end if
+
+	next
+
+	'Custom processing within a string
+
+	For each item in oXMLDoc.SelectNodes("//Wizard/Global/CustomStatement")
+		If not ExecuteWithErrorHandling(ITem.TExt) then
+			window.close
+			Exit sub
+		End if
+	Next
+
+
+	' Resolve references to external panes
+
+	For each item in oXMLDoc.SelectNodes("//Wizard/Pane[@reference]")
+
+		' Make sure the referenced XML file exists
+
+		If not oFso.FileExists(srootDir & item.Attributes.getNamedItem("reference").Value) then
+			FatalError "Unable to load XML file: " & srootDir & item.Attributes.getNamedItem("reference").Value
+			Exit sub
+		End if
+
+
+		' Load the XML file
+
+		Set oReference = oUtility.CreateXMLDOMObjectEx( srootDir & item.Attributes.getNamedItem("reference").Value )
+		If IsEmpty(oReference ) or (oReference  is nothing) then
+			FatalError "Unable to Create MSXML2.DOMDocument(.6.0) Object."
+			Exit sub
+		End if
+
+
+		' Copy the child nodes
+
+		For each refItem in oReference.SelectSingleNode("//Wizard/Pane").ChildNodes
+			item.AppendChild refItem.CloneNode(true)
+		Next
+
+
+		' Copy attributes of the node itself
+
+		For each oAttr in oReference.SelectSingleNode("//Wizard/Pane").Attributes
+			If item.Attributes.getNamedItem(oAttr.Name) is Nothing then
+				Set oNewAttr = oXMLDoc.createAttribute(oAttr.Name)
+				oNewAttr.Value = oAttr.Value
+				item.Attributes.setNamedItem(oNewAttr)
+			End if
+		Next
+
+
+		' Custom processing within an external file
+
+		For each refItem in oReference.SelectNodes("//Wizard/Global/(Initialization|Validation|CustomScript)")
+
+			If not oFso.FileExists(srootDir & refItem.Text) then
+				FatalError "Unable to load VBScript File: " & srootDir & refItem.Text
+				exit sub
+			End if
+
+			If not ExecuteWithErrorHandling(oFSO.OpenTextFile(srootDir & refItem.Text,ForReading,FALSE).ReadAll) then
+				' window.close
+				Exit sub
+			End if
+
+		Next
+
+	Next
+
+
+	' Populate the list of steps in the navigation pane
+
+	For each item in oXMLDoc.SelectNodes("//Wizard/Pane")
+		If item.Attributes.getNamedItem("title") is Nothing then
+			sNavigation = sNavigation & "<div class=""NavItem"" id=nav_" & item.Attributes.getNamedItem("id").value & "><a onclick=""javascript:NavClick('" & item.Attributes.getNamedItem("id").value & "')"">" & item.Attributes.getNamedItem("id").value & "</a></div>"
+		Else
+			sNavigation = sNavigation & "<div class=""NavItem"" id=nav_" & item.Attributes.getNamedItem("id").value & "><a onclick=""javascript:NavClick('" & item.Attributes.getNamedItem("id").value & "')"">" & item.Attributes.getNamedItem("title").value & "</a></div>"
+		End if
+	Next
+	MyNavigationArea.innerHTML = sNavigation
+
+
+	' See if we need to hide the navigation area
+
+	If oXMLDoc.SelectNodes("//Wizard/Global/HideNavigation").Length > 0 then
+		MyNavigationArea.style.Display = "none"
+		MyContentArea.Style.width = "100%"
+		MyContentArea.style.backgroundColor = "white"
+	End if
+
+
+	' Finally, navigate to the first page.
+
+	bHasWarningLabels = FALSE
+	if not oUtility.Arguments.Exists("NotWizard") then
+		oEnvironment.Item("WizardComplete") = "N"
+	end if
+	SetPane "", true
+
+End sub
+
+
+'
+' Navigate to a specific Pane
+'
+Function SetPane(strPane, bValidate)
+	Dim oNodes
+	Dim oNode
+	Dim oCurrentNode
+	Dim oCustomScript
+	Dim oParentNode
+	Dim bFound
+	Dim bFindNext
+	Dim oNodeIndex
+	Dim oElement
+	Dim bDisplay
+	Dim iCount
+
+	Dim sElementName
+	Dim i
+
+
+	' See if we have a current pane.  If so, try to validate it (unless we're moving backwards).
+
+	If sCurrentPane <> "" and bValidate then
+
+		Set oCurrentNode = oXMLDoc.selectSingleNode("//Wizard/Pane[@id='" & sCurrentPane & "']")
+		If oCurrentNode is nothing then stop
+
+
+		' Is there a validation function defined?  If so, execute it.
+
+		If bHasWarningLabels then
+			If not ParseAllWarningLabels then
+				Exit function
+			End if
+		End if
+		For each oCustomScript in oCurrentNode.SelectNodes("Validation")
+			If not EvalWithErrorHandling(oCustomScript.Text) then
+				Exit function
+			End if
+		Next
+		SaveAllDataElements
+
+
+		' Validated, add to stack
+
+		oStack.Add sCurrentPane, ""
+		
+	End if
+
+
+	' Show or hide future panes nav bar items.
+
+	Set oNodes = oXMLDoc.selectNodes("//Wizard/Pane")
+
+	iCount = 1
+	bFindNext = False
+	Set oCurrentNode = Nothing
+
+	If sCurrentPane <> "" then
+		bFound = false
+	Else
+		bFound = true
+	End if
+
+	For each oNode in oNodes
+
+		Set oElement = document.getElementByID("nav_" & oNode.Attributes.getNamedItem("id").value)
+		oElement.className = "NavHistory"
+
+		If oNode.Attributes.getNamedItem("id").value = sCurrentPane then  ' Current pane, start looking for new
+
+			bFound = true
+
+		ElseIf oNode.Attributes.getNamedItem("id").value = strPane then  ' Past pane, make it current again
+
+			bFound = true
+			bFindNext = true
+			Set oCurrentNode = oNode
+			sCurrentPane = oCurrentNode.Attributes.getNamedItem("id").value
+			oNodeIndex = iCount
+
+			oElement.className = "NavItemHighlighted"
+
+		ElseIf bFound then  ' Future pane, make first enabled the current, set nav state for all future panes
+
+			oElement.className = "NavItem"
+
+			' Check each future pane to see if it should be shown in the tree
+
+			bDisplay = true
+			For each oCustomScript in oNode.SelectNodes("Condition")
+				If not EvalWithErrorHandling(oCustomScript.Text) then
+					oElement.style.display = "none"
+					bDisplay = false
+					Exit for
+				End if
+			Next
+			If bDisplay then
+
+				' We want to show this nav entry
+
+				oElement.style.display = "inline"
+
+
+				' Is this the first future pane to be shown?  If so, remember the details
+
+				If not bFindNext then
+
+					bFindNext = true
+					Set oCurrentNode = oNode
+					sCurrentPane = oCurrentNode.Attributes.getNamedItem("id").value
+					oNodeIndex = iCount
+
+					oElement.className = "NavItemHighlighted"
+				End if			
+			End if
+
+		End if
+
+		iCount = iCount + 1
+	Next
+
+
+	' No more enabled panes?  Then we're done.
+
+	If oCurrentNode is nothing then
+		SaveProperties
+		If Not oUtility.Arguments.Exists("NotWizard") then
+			oEnvironment.Item("WizardComplete") = "Y"
+		End if
+		window.close
+		Exit function
+	End if
+
+
+	' Set the title
+
+	If oCurrentNode.Attributes.getNamedItem("title") is Nothing then
+		MyHeaderTitle.innerHTML = oCurrentNode.Attributes.getNamedItem("id").value
+	Else
+		MyHeaderTitle.InnerHTML = oCurrentNode.Attributes.getNamedItem("title").value
+	End if
+
+
+	' Set buttons as specified
+
+	If not (oCurrentNode.selectSingleNode("ButtonNext/Label") is nothing) then
+		ButtonNext.outerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"ButtonNext/Label")
+	ElseIf oNodes.Length = oNodeIndex then
+		' Since we can Positivley tell that this is the last page, change the label to "Finish"
+		' We use Finish because it can use the same Access key as Next "N".
+		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick>Fi<U>n</U>ish</button>"
+	Else
+		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>"
+	End if
+
+	If oCurrentNode.selectSingleNode("ButtonCancel/Label") is nothing then
+		ButtonCancel.outerHTML = "<button accesskey=C id=buttonCancel language=vbscript onclick=ButtonCancelClick><U>C</U>ancel</button>"
+	Else
+		ButtonCancel.outerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"ButtonCancel/Label")
+	End if
+
+	If oCurrentNode.selectSingleNode("ButtonPrev/Label") is nothing then
+		ButtonPrev.outerHTML = "<button accesskey=B id=buttonPrev onclick=ButtonBackClick>B</U>ack</button>"
+	Else
+		ButtonPrev.outerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"ButtonPrev/Label")
+	End if
+
+	' See if we need to hide the navigation area
+
+	If ucase(oUtility.SelectSingleNodeStringEx(oCurrentNode, "HideBackNext", false )) = "TRUE" then
+		RightWizardButtons.Style.display = "none"
+	ElseIf ucase(oUtility.SelectSingleNodeStringEx(oCurrentNode, "HideBackNext", false )) = "FALSE" then
+		RightWizardButtons.Style.display = "block"
+	End if
+
+
+
+	' Enable or disable the back button if this is the first page!
+	
+	If oStack.Count <> 0 then
+		buttonPrev.Disabled = false
+	Else
+		buttonPrev.Disabled = true
+	End if
+
+	MyContentArea.innerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"Body")
+
+	PopulateElements
+
+
+	' Are there are any initialization function(s) defined?  If so, execute them.
+
+	For each oCustomScript in oCurrentNode.SelectNodes("Initialization")
+		If not ExecuteWithErrorHandling(oCustomScript.Text) then
+			' exit function
+		End if
+	Next
+
+	If AttachAllWarningLabels then
+		bHasWarningLabels = TRUE
+		ParseAllWarningLabels
+	End if
+
+
+	' Set Focus to the first good element
+
+	For each oNode in document.body.all
+		Select case ucase(oNode.tagname)
+		Case "INPUT", "TEXTAREA", "SELECT"
+			If ucase(oNode.type) <> "BUTTON" and not oNode.Disabled and ucase(oNode.Style.Display) <> "NONE" then
+
+				bFound = TRUE
+
+				'Skip over any element with a parent that is hidden
+
+				Set oParentNode = oNode.ParentElement
+				Do while oParentNode.uniqueID <> document.body.UniqueID
+					If lcase(oParentNode.style.display) = "none" then
+						bFound = FALSE
+						Exit do
+					End if
+					Set oParentNode = oParentNode.ParentElement
+				Loop
+
+				If bFound then
+
+					If ucase(oNode.Type) = "RADIO" then
+						If not oNode.Checked then
+
+							' If the first "Active" element is a radio button, then set focus on only the first "Selected" item.
+							sElementName = ""
+							On error resume next
+							   sElementName = oNode.Name
+							On error goto 0
+
+							bFound = FALSE
+							Set oNodes = document.getElementsByName( sElementName )
+							If not oNodes is nothing then
+								For each oElement in oNodes
+									If oElement.Checked then
+										oElement.Focus
+										oElement.Select
+										bFound = TRUE
+										Exit for
+									End if
+								Next
+							End if
+
+							If bFound then
+								Exit for
+							End if
+
+						End if
+					End if
+					
+					on error resume next
+					oNode.Focus
+					If ucase(oNode.tagname) <> "SELECT" then
+						oNode.Select
+					End if
+					on error goto 0
+					Exit for
+
+				End if
+
+			End if
+		End select
+	Next
+	
+	For each oCustomScript in oCurrentNode.SelectNodes("InitializationCloseout")
+		If not ExecuteWithErrorHandling(oCustomScript.Text) then
+			' exit function
+		End if
+	Next
+
+End function
+
+
+''''''''''''''''''''''''''''''''''''
+'
+' Parse through all elements on a page and save the data to the property list.
+'	Stored as a Name=Value Pair.
+'
+' Rules:
+'	* Element must have the Name attribute defined.
+'	* Can be a TEXTAREA ( value becomes the InnerText ).
+'	* Must be either a TEXTAREA or a INPUT ( checkbox, radio, or other edit control: file, hidden, password, or text ).
+'	* If there is more than one CheckBox or Edit Control of the same name, values will be stored as an array.
+'
+
+Sub SaveAllDataElements
+	Dim i
+	Dim oInput
+	Dim oNamed
+	Dim oInputElement
+	Dim sElementName
+
+
+	' Extract all of the properties
+
+	For each oInput in document.body.all
+
+		sElementName = ""
+		On error resume next
+		   sElementName = oInput.Name
+		On error goto 0
+
+		If sElementName <> "" then
+
+			If UCase(oInput.TagName) = "TEXTAREA" then
+
+				oProperties(sElementName) = oInput.InnerText
+
+			ElseIf UCase(oInput.TagName) = "INPUT" or UCase(oInput.TagName) = "SELECT" then
+
+				Select case UCase(oInput.Type)
+				case "BUTTON","IMAGE","RESET","SUBMIT" ' Do Nothing
+				case "RADIO"
+					If oInput.CHecked and oInput.Value <> "on" then
+						oProperties(sElementName) = oInput.Value
+					End if
+				case else
+
+					Set oNamed = document.getElementsByName( sElementName )
+					If oNamed.length > 1 then
+						If oNamed.Item(0).SourceIndex = oInput.SourceIndex then ' Only once
+							Set oInputElement = CreateObject("Scripting.Dictionary")
+							For i = 0 to oNamed.Length - 1
+								If oNamed.Item(i).Disabled then
+								Elseif uCase(oNamed.Item(i).Type) = "CHECKBOX" then
+									If oNamed.Item(i).CHecked and oNamed.Item(i).Value <> "on" then
+										oInputElement.Add oNamed.Item(i).UniqueID, oNamed.Item(i).Value
+									End if
+								Else ' Other Input Boxes
+									oInputElement.Add oNamed.Item(i).UniqueID, oNamed.Item(i).Value
+								End if
+							Next
+							oProperties(sElementName) = oInputElement.Items
+						End if
+					 Else
+						If uCase(oInput.Type) = "CHECKBOX" then
+							If oInput.CHecked and oInput.Value <> "on" then
+								oProperties(sElementName) = oInput.Value
+							Else
+								oProperties(sElementName) = ""
+							End if
+						Else ' Other Input Boxes
+							oProperties(sElementName) = oInput.Value
+						End if
+					 End if
+
+				End select
+
+			End if
+
+
+			' Debug Logging
+
+			If oLogging.Debug then
+				If oProperties.Exists(sElementName) then
+					If isobject(oProperties(sElementName)) or isarray(oProperties(sElementName)) then
+						For each i in oProperties(sElementName)
+							oLogging.CreateEntry sElementName & "( ) = " & i  , LogTypeInfo
+						Next
+				  	Else
+						oLogging.CreateEntry  sElementName & " = " & oProperties(sElementName) , LogTypeInfo
+					End if
+				End if
+			End if
+
+		End if
+	Next
+
+End sub
+
+
+'
+' Parse through all elements on a page and populate the value (or innertext) if there is a coresponding Property
+'	Similar processing to SaveAllDataElements, except we also load named <Span></span> elements.
+'
+
+Function PopulateElements
+	Dim oInput, oAppItem, canuse
+	Dim sElementName
+
+
+	' Extract all of the properties
+
+	For each oInput in document.body.all
+
+		sElementName = ""
+		On error resume next
+		   sElementName = oInput.Name
+		On error goto 0
+
+		If sElementName <> "" then
+			If isarray(property(sElementName)) then
+				canuse = TRUE
+			ElseIf property(sElementName) <> "" then
+				canuse = TRUE
+			Else
+				canuse = FALSE
+			End if
+			If canuse then
+				If UCase(oInput.TagName) = "TEXTAREA" or UCase(oInput.TagName) = "SPAN" then
+
+					oInput.InnerText = property(oInput.Name)
+
+				ElseIf UCase(oInput.TagName) = "INPUT" or UCase(oInput.TagName) = "SELECT" then
+
+					Select case UCase(oInput.Type)
+					Case "BUTTON","IMAGE","RESET","SUBMIT"
+						' Do nothing
+					Case "RADIO"
+						If not isarray(property(oInput.Name)) then
+							oInput.Checked = strcomp(oInput.Value,property(oInput.Name),vbTExtCompare) = 0
+						End if
+					Case "CHECKBOX"
+
+						If isarray(property(oInput.Name)) then
+							For each oAppItem in property(oInput.Name)
+								If ucase(oAppItem) = ucase(oInput.Value) then
+									oInput.Checked = true
+									Exit for
+								End if
+							Next
+
+						ElseIf property(oInput.Name) <> "" then
+
+							oInput.Checked =  strcomp(oInput.Value, property(oInput.Name),vbTExtCompare) = 0
+
+						End if
+
+					Case else ' file, hidden, password, or text
+
+						If not isarray(property(oInput.Name)) then
+
+							oINput.Value = property(oInput.Name)
+
+						End if
+
+					End select
+
+				End if
+			End if
+		End if
+
+	Next
+
+End function
+
+
+''''''''''''''''''''''''''''''''''''
+'
+'  Button and Keystroke Handling
+'
+
+Sub ButtonNextClick
+
+	If buttonNext.Disabled then
+		Exit sub
+	End if
+
+	SetPane "", true
+End sub
+
+
+Sub ButtonBackClick
+	Dim sPrev, keys
+
+	If buttonCancel.Disabled or oStack.Count = 0 then
+		Exit sub
+	End if
+
+
+	' Pop previous from the stack, then ask for it to be current
+
+	keys = oStack.Keys
+	sPrev = keys(oStack.Count - 1)
+	oStack.Remove sPrev
+
+
+	' Ask SetPane to display the previous one
+
+	SetPane sPrev, false
+
+End sub
+
+
+Sub ButtonCancelClick
+	If Msgbox("Are you sure you want to cancel?",4,"Cancel wizard?") = vbYES Then
+		window.Close
+	End If
+End sub
+
+
+Sub KeyHandler
+
+	If window.event.KeyCode = 27 then
+		 ButtonCancelClick
+
+	ElseIf window.event.KeyCode = 13 then
+
+		Select case ucase(window.event.srcElement.tagName)
+		Case "TEXTAREA", "BUTTON", "IMG"
+			Exit sub
+		Case "INPUT"
+			If ucase(window.event.srcElement.type) = "BUTTON" then
+				Exit sub
+			End if
+		End select
+
+		window.event.returnValue = FALSE
+		ButtonNextClick
+
+	End if
+
+End sub
+
+
+Function GetDynamicListBoxSize( this )
+
+	If this.parentElement is nothing then
+		GetDynamicListBoxSize = 200
+	Else
+		GetDynamicListBoxSize = this.parentElement.offsetHeight - this.offsetTop - 19
+		If GetDynamicListBoxSize < 200 then
+			GetDynamicListBoxSize = 200
+		End if
+	End if
+
+End function
+
+
+''''''''''''''''''''''''''''''''''''
+'
+' Custom Customized UI functionality for BDD WIzards
+'
+
+'
+' If there are any empty Text Boxes with a coresponding <LABEL> element, unhide the <LABEL> element.
+'   Returns FALSE and disables the <NEXT> button if ANY Text box with a coresponding <LABEL> element is blank.
+'
+'  There is a special case when getting User Credentials.
+'
+Function ParseAllWarningLabelsEx ( DomainElement, UserNameElement )
+	Dim oLabel
+	Dim oInputElement
+	Dim IsEmptyBox
+
+	ParseAllWarningLabelsEx = TRUE
+
+	For each oLabel in document.body.all.tags("LABEL")
+		If oLabel.htmlFor <> "" then
+			Set oInputElement = document.GetElementByID(oLabel.htmlFor)
+			Select case ucase(oInputElement.Type)
+			Case "RADIO","CHECKBOX","HIDDEN","IMAGE","RESET","SUBMIT"
+			Case else
+
+				IsEmptyBox = FALSE
+				If TrimAllWS(oInputElement.value) = "" and not oInputElement.Disabled then
+					IsEmptyBox = TRUE
+					If (oInputElement is DomainElement) and not (UsernameELement is nothing) then
+						' Special Case, we don't need a Domain String if the UserName contains a \ or a @
+						IsEmptyBox = instr(1,UsernameELement.value,"@",vbTextCompare) = 0 and instr(1,UsernameELement.value,"\",vbTextCompare) = 0
+					End if
+				End if
+				HideUnhide oLabel, IsEmptyBox
+				ParseAllWarningLabelsEx = ParseAllWarningLabelsEx and ( not IsEmptyBox )
+
+			End select
+		End if
+	Next
+
+	ButtonNext.Disabled =  not ParseAllWarningLabelsEx
+
+End function
+
+
+Function ParseAllWarningLabels
+	ParseAllWarningLabels = ParseAllWarningLabelsEx(nothing, nothing)
+End function
+
+
+Function ParseAllWarningLabels_noError
+	ParseAllWarningLabelsEx nothing, nothing
+	ParseAllWarningLabels_noError = TRUE
+End function
+
+
+'
+' Attach Handling handling functions to all edit boxes with coresponding <LABEL> elements
+'   By convention, these <LABEL> elements are warnings that the edit boxes must NOT be blank.
+'   Do not override the OnPropertyChange handler if present.
+'
+Function AttachAllWarningLabels
+	Dim oLabel
+	Dim oInputElement
+
+	AttachAllWarningLabels = FALSE
+
+	For each oLabel in document.body.all.tags("LABEL")
+		If oLabel.htmlFor <> "" then
+			Set oInputElement = document.GetElementByID(oLabel.htmlFor)
+			Select case ucase(oInputElement.Type)
+			Case "RADIO","CHECKBOX","HIDDEN","IMAGE","RESET","SUBMIT"
+				' Do Nothing ...
+			Case else
+
+				If isnull(oInputElement.onPropertyChange) then
+					oInputElement.OnPropertyChange = getRef("ParseAllWarningLabels_noError")
+					AttachAllWarningLabels = TRUE
+				End if
+
+				If isnull(oInputElement.onChange) and isnull(oInputElement.onKeyPress) then
+					oInputElement.OnChange = oInputElement.OnPropertyChange
+					oInputElement.onKeyUp = oInputElement.OnPropertyChange
+				End if
+
+			End select
+		End if
+	Next
+
+End function
+
+
+Sub HideAllWarningLables
+	Dim oLabel
+	Dim oInputElement
+
+	For each oLabel in document.body.all.tags("LABEL")
+		If oLabel.htmlFor <> "" then
+			Set oInputElement = document.GetElementByID(oLabel.htmlFor)
+			Select case ucase(oInputElement.Type)
+			Case "RADIO","CHECKBOX","HIDDEN","IMAGE","RESET","SUBMIT"
+			Case else
+				HideUnhide oLabel, FALSE
+			End select
+		End if
+	Next
+
+	ButtonNext.Disabled =  FALSE
+End sub
+
+
+'''''''''''''''''''''''''''''''''''''''''''
+'
+' Click a Radio or CheckBox the the left of the item clicked (within an index of 10).
+'
+Function ClickChildCheckBox
+	Dim i, oItem
+
+	For i = window.event.srcElement.SourceIndex - 1 to 0 step -1
+		If i < window.event.srcElement.SourceIndex - 10 then exit function
+			Set oItem = document.all.item(i)
+			Select Case uCase(oItem.TagName)
+			Case "INPUT"
+				If (ucase(oItem.Type) = "RADIO" or ucase(oItem.Type) = "CHECKBOX") then
+					oItem.click
+					Exit function
+				End if
+			Case "TR"
+				If not (oItem.parentNode.previousSibling is nothing) then
+					Exit function
+				End if
+			Case "BR", "BODY"
+				Exit function
+			Case else
+			End select
+	Next
+End function
+
+'
+' Wrapper to load properties from diffrent sources
+'
+Function Property(strName)
+
+	If StrName = "" then
+		Property = ""
+	Elseif oProperties.Exists(strName) then
+		Property = oProperties(strName)
+	ElseIf oEnvironment.Item(strName) <> "" then
+		Property = oEnvironment.Item(strName)
+	ElseIf oEnvironment.Item(strName & "1") <> "" or oEnvironment.Item(strName & "001") <> "" then
+
+		' Convert a collection into an array.
+		property = oEnvironment.ListItem(strName).keys
+
+	ElseIf oEnv(strName) <> "" then
+		Property = oEnv(strName)
+	End if
+
+End Function
+
+
+Function Property_StringOnly(strName)
+	Property_StringOnly = Property(strName)
+	If IsArray(strName) then
+		Property_StringOnly = empty
+	End if
+End function
+
+
+Sub SaveProperties
+
+	Dim p
+
+	For each p in oProperties.Keys
+		If isobject(oProperties(p)) or isarray(oProperties(p)) then
+			oEnvironment.SetListItemEx p, oProperties(p)
+		Else
+			oEnvironment.Item(p) = oProperties(p)
+		End if
+	Next
+
+End Sub
+
+'
+' This function allows you to place "Extra" information in "Hidden" windows until the user presses the "Show Details" button.
+'
+Sub HideUnHideCmdWindow (CmdWindow)
+
+	If UCASE(CmdWindow.style.display) = "NONE" then
+		window.event.srcElement.Src = "minusico.gif"
+		CmdWindow.style.display = "inline"
+	Else
+		window.event.srcElement.Src = "plusicon.gif"
+		CmdWindow.style.display = "none"
+	End if
+
+End sub
+
+
+Sub HideUnHideFolder(cmdWindow)
+
+	If UCASE(document.GetElementByID(CmdWindow).style.display) = "NONE" then
+		window.event.srcElement.Src = "minusicon1.png"
+		document.GetElementByID(CmdWindow).style.display = "block"
+	Else
+		window.event.srcElement.Src = "plusicon1.png"
+		document.GetElementByID(CmdWindow).style.display = "none"   
+	End if
+
+End sub 
+
+
+Function BrowseForFolder(sDefaultValue)
+	Dim iRetVal
+
+	iRetVal = Success
+
+	' Workaround for BrowseForFolder problem when called from an HTA:  sometimes it doesn't show up.
+	oEnvironment.Item("DefaultFolderPath") = sDefaultValue
+
+	iRetVal = oShell.Run("wscript.exe """ & oUtility.ScriptDir & "\LTIGetFolder.wsf""", 1, true)
+	If iRetVal = 0 then
+		BrowseForFolder = oEnvironment.Item("FolderPath")
+	Else
+		BrowseForFolder = sDefaultValue
+	End if
+
+End Function
+
+
+Function NavClick(sPane)
+
+	Dim keys
+	Dim sPrev
+
+
+	' If the pane isn't in the stack (maybe future pane) do nothing
+
+	If not oStack.Exists(sPane) then
+		Exit function
+	End if
+
+
+	' Keep popping from the stack until we remove the specified pane, then make it current
+
+	Do while oStack.Count > 0
+
+		keys= oStack.Keys
+		sPrev = keys(oStack.Count - 1)
+		oStack.Remove sPrev
+		If sPrev = sPane then
+			SetPane sPrev, false
+			Exit Do
+		End if
+	Loop
+
+End Function
+
+
+		-->
+		 </script>
+	</head>
+
+
+	<body onload="window.SetTimeout GetRef('WizardOnLoad'),100" onkeydown="KeyHandler" Language="VBScript" >
+		<!-- Create a table to place all of our content in. Makes resizing of windows easier -->
+		<table cellpadding="0" cellspacing="0" border="0" width="100%" style="height: 100%;">
+
+			<!-- Header -->
+			<tr valign="top">
+				<td colspan="2" >
+					<div id="MyHeader" class="HeaderArea" >
+
+					<img id="bannerImage"  class="HeaderBackground" src="header-image.png">
+					<img id=MyHeaderIcon class="HeaderIcon" src="Computer.png">
+					<span id=MyHeaderTitle class="HeaderTitle"></span>
+
+					</div>
+				</td>
+			</tr>
+
+
+			<!-- Content Area of Wizard -->
+			<tr>
+				<td  align=left valign=top style="background-color: white;">
+					<div id="MyNavigationArea" class="NavigationArea" style="padding: 8px 0px 0px 0px;">
+
+						<!-- Navigation will go HERE! -->
+
+					</div>
+				</td>
+				<td halign="left" valign=top style="background-color: #F0F0F0; width: expression( Math.max(documentElement.offsetWidth, 173));">
+					<div id="MyContentArea" class="ContentArea" style="background-color: #F0F0F0; padding: 16px;">
+
+						<!-- Content will go HERE! -->
+
+					</div>
+				</td>
+			</tr>
+
+			<!-- Footer of Wizard -->
+			<tr valign="Top"  >
+				<td colspan="2" class="CommandArea" id="RightWizardButtons" align="right">
+					<button accesskey=B id=buttonPrev onclick=ButtonBackClick>B</U>ack</button>
+					<button accesskey=N type=submit id=buttonNext onclick=ButtonNextClick ><U>N</U>ext</button>
+					<button accesskey=C id=buttonCancel onclick=ButtonCancelClick><U>C</U>ancel</button>
+				</td>
+			</tr>
+
+		</table>
+	</body>
+</html>

@@ -1,0 +1,104 @@
+<job id="ZTINextPhase">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTINextPhase.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Update the phase variable to indicate that the current
+' //            phase is complete.
+' // 
+' // Usage:     cscript.exe [//nologo] ZTINextPhase.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTINextPhase
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim sFile
+		Dim oContents
+		Dim sKey
+
+
+		iRetVal = Success
+
+
+		'//----------------------------------------------------------------------------
+		'//  Based on the current phase, set the next phase
+		'//----------------------------------------------------------------------------
+
+		Select Case oEnvironment.Item("PHASE")
+		Case "VALIDATION"
+			oEnvironment.Item("PHASE") = "STATECAPTURE"
+		Case "STATECAPTURE"
+			oEnvironment.Item("PHASE") = "PREINSTALL"
+		Case "PREINSTALL"
+			If oEnvironment.Item("DeploymentMethod") = "OSD" then
+				oEnvironment.Item("PHASE") = "POSTINSTALL"
+			Else
+				oEnvironment.Item("PHASE") = "INSTALL"
+			End if
+		Case "INSTALL"
+			oEnvironment.Item("PHASE") = "POSTINSTALL"
+		Case "POSTINSTALL"
+			oEnvironment.Item("PHASE") = "STATERESTORE"
+		Case "STATERESTORE"
+			oEnvironment.Item("PHASE") = ""   ' Done
+		End Select
+
+		oLogging.CreateEntry oUtility.ScriptName & " COMPLETED.  Return Value = " & iRetVal, LogTypeInfo
+
+		Main = iRetval
+
+		' All done
+
+	End Function
+
+End Class
+
+	</script>
+</job>

@@ -1,0 +1,68 @@
+<job id="LTIGetFolder">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="WizUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      LTIGetFolder.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Browse for a folder, returning it via the environment.
+' // 
+' // Usage:     cscript.exe [//nologo] LTIGetFolder.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class LTIGetFolder
+
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	'
+	' Creates a dialog box that enables the user to select a folder and then returns the selected folder's path.
+	'    See: http://msdn.microsoft.com/library/default.asp?url=/library/en-us/shellcc/platform/shell/reference/objects/shell/browseforfolder.asp
+	'
+
+	Function Main
+	
+		Dim oFolder
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+
+		Set oFolder = nothing
+		on error resume next
+		Set oFolder = CreateObject("Shell.Application").BrowseForFolder(0, "Select Folder Containing Files", 0, "")
+		on error goto 0
+		
+		If oFolder is nothing then
+			oEnvironment.Item("FolderPath") = oEnvironment.Item("DefaultFolderPath")
+		Else
+			oEnvironment.Item("FolderPath") = oFolder.self.Path
+		End if 
+
+		Main = Success
+
+	End Function
+
+End class
+
+
+	</script>
+</job>
+

@@ -1,0 +1,1323 @@
+<job id="ZTIDrivers">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTICOnfigFile.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIDrivers.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Inject needed drivers
+' // 
+' // Usage:     cscript ZTIDrivers.wsf [/debug:true] 
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIDrivers
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim sArchitecture  ' Target Platform Type, either x86 or x64
+	Dim sPlatformDir   ' Target Platform Dir, either i386 or amd64
+	Dim sTargetBuild   ' Target Build, 6 or 5
+	Dim sGroupList
+
+	Dim sDestinationDrive
+
+
+	' Global Drivers ConfigObject
+	Private oXMLDrivers
+
+	Private g_dAllDrivers
+	Private g_dFilteredDrivers
+	Private g_dAllPnPIDs
+	Private g_sDriversDir
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+		g_sDriversDir   = ""
+		sTargetBuild    = Left(oEnvironment.Item("ImageBuild"), 1)
+		sGroupList      = "DriverGroup"
+		
+		g_dAllDrivers = empty
+		g_dFilteredDrivers = empty
+		g_dAllPnPIDs = empty
+
+
+		' Determine the architecture of drivers to inject
+
+		If UCase(oEnvironment.Item("OSDPLATFORMARCH")) = "AMD64" then
+			sArchitecture = "X64"
+			sPlatformDir  = "amd64"
+		ElseIf UCase(oEnvironment.Item("OSDPLATFORMARCH")) = "X86" then
+			sArchitecture = "X86"
+			sPlatformDir  = "i386"
+		ElseIf oEnvironment.Item("ImageProcessor") <> "" then
+			sArchitecture = UCase(oEnvironment.Item("ImageProcessor"))
+			If UCase(sArchitecture) = "X64" then
+				sPlatformDir = "amd64"
+			Else
+				sPlatformDir = "i386"
+			End if
+		Else
+			sArchitecture = UCase(oEnvironment.Item("ARCHITECTURE"))
+			If UCase(sArchitecture) = "X64" then
+				sPlatformDir = "amd64"
+			Else
+				sPlatformDir = "i386"
+			End if
+		End If
+
+		oLogging.CreateEntry "Processing drivers for an " & sArchitecture & " operating system.", LogTypeInfo
+
+	End Sub
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+		Dim oItem
+		Dim oPath
+		Dim sSource
+		Dim sGUID
+		Dim iCurrent, iTotal, iPercent
+
+		Main = Success
+
+		sDestinationDrive = oUtility.GetOSTargetDriveLetter
+
+		' ---------------------------------------------------------------------------
+		' Abort if there is nothing to do at this point
+		' ---------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentMethod") = "OSD" and oEnvironment.Item("PHASE") = "PREINSTALL" then
+
+			oLogging.CreateEntry "No driver actions need to be taken during the OSD preinstall phase.", LogTypeInfo
+			Exit function
+			
+		End if
+
+		' ---------------------------------------------------------------------------
+		' Point of no return...if you upgrade from X86 to X64 this WILL delete all the drivers
+		' ---------------------------------------------------------------------------
+	
+		If UCase(oEnvironment.Item("DriverCleanup")) <> "DONE" Then
+			oEnvironment.Item("DriverCleanup") = "DONE"
+			oLogging.CreateEntry "Compare Image processor Type with Original ["& oEnvironment.Item("OriginalArchitecture") & "] = [" & sArchitecture & "].", LogTypeInfo
+			If ucase(oEnvironment.Item("OriginalArchitecture")) <> ucase(sArchitecture) and oEnvironment.Item("OriginalArchitecture") <> "" Then
+				If oFSO.FolderExists( sDestinationDrive & "\Drivers" ) Then
+					oFileHandling.RemoveFolder( sDestinationDrive & "\Drivers")
+					oLogging.CreateEntry "Remove folder: " & sDestinationDrive & "\Drivers" , LogTypeInfo
+				End if
+			End if
+		 End if
+
+		' ---------------------------------------------------------------------------
+		' Load Driver Configuraiton Files, and perform basic parsing
+		' ---------------------------------------------------------------------------
+		set oXMLDrivers = new ConfigFile
+		oXMLDrivers.sFileType = "Drivers"
+		oXMLDrivers.sSelectionProfile = oEnvironment.Item("DriverSelectionProfile")
+		oXMLDrivers.sCustomSelectionProfile = oEnvironment.Item("CustomDriverSelectionProfile")
+		oXMLDrivers.bMustSucceed = false
+
+		' ---------------------------------------------------------------------------
+		' Load Driver Configuraiton Files, and perform basic parsing
+		' ---------------------------------------------------------------------------
+			
+		If ucase(oEnvironment.Item("DriverInjectionMode")) = "ALL" then
+		
+			' ---------------------------------------------------------------------------
+			' Enumerate through all drivers
+			' ---------------------------------------------------------------------------
+			iTotal = dFilteredDrivers.Count
+			iCurrent = 0
+			for each oItem in dFilteredDrivers.Items
+
+				iCurrent = iCurrent + 1
+			
+				If PlatformCheck ( oItem ) then
+					iPercent = CInt((iCurrent / iTotal) * 100)
+					CopySingleDriver oItem.attributes.getNamedItem("guid").value, "Device", False, iPercent
+				End if
+			
+			next
+
+			UpdateConfiguration
+		
+		ElseIf oEnvironment.Item("DeploymentMethod") <> "OSD" and oEnvironment.Item("PHASE") = "POSTINSTALL" then
+
+			oLogging.CreateEntry "No driver copying needs to be performed during the Lite Touch postinstall phase.", LogTypeInfo
+
+			' Downlevel OS configuration is necessary to update the XP DevicePath after the image has been applied
+			UpdateConfiguration 
+
+
+		ElseIf oEnvironment.Item("DoCapture") = "YES" and oEnvironment.Item("PHASE") = "STATERESTORE" then
+
+			oLogging.CreateEntry "Prepare machine for Sysprep.", LogTypeInfo
+
+			If ucase(right(oEnvironment.Item("InstallFromPath"),4)) = ".WIM" then
+				oLogging.CreateEntry "No driver actions can be taken for OS Images installed from *.wim files.", LogTypeInfo
+				Exit function
+			End if 
+
+			oXMLDrivers.xPathFilter = "/*/*[ ( Class = 'SCSIAdapter' or Class = 'hdc' ) and " & oXMLDrivers.XPathFilterString( oXMLDrivers.bEnabled, oXMLDrivers.bHidden ) & "]"
+			oXMLDrivers.sSelectionProfile = oEnvironment.Item("SysPrepDriverSelectionProfile")
+			sGroupList = "StorageDriverSysPrepGroup"
+
+
+			Main = MarkupTextFilesSysPrep( dFilteredDrivers )
+
+
+		Else 
+		
+			oLogging.CreateEntry "Copying any drivers that may be needed for this computer into Target.", LogTypeInfo
+
+			' ---------------------------------------------------------------------------
+			' Look for drivers for the devices
+			' ---------------------------------------------------------------------------
+			CopyDrivers "/devices/device", FALSE
+
+			' ---------------------------------------------------------------------------
+			' Now copy any folders specified via DriverPaths list (BDD 2.5 parity)
+			' ---------------------------------------------------------------------------
+
+			For each oItem in oEnvironment.ListItem("DriverPaths")
+			
+				Main = CopyDriverDir(oItem, "." )
+				If Main <> SUCCESS then
+					exit for
+				End if
+				
+			Next
+
+			UpdateConfiguration
+
+
+			' ---------------------------------------------------------------------------
+			' If there are any SCSI or IDE drivers installed, then markup for Windows 5.x
+			' ---------------------------------------------------------------------------
+
+			If sTargetBuild = 5 then
+
+				oLogging.CreateEntry "Check for Storage Drivers.", LogTypeInfo
+				
+				If ucase(right(oEnvironment.Item("InstallFromPath"),4)) = ".WIM" then
+					oLogging.CreateEntry "No driver actions can be taken for OS Images installed from *.wim files.", LogTypeInfo
+				
+				Else
+
+					MarkupWinNTTextFiles
+
+				End if 
+
+			End if
+
+		End if
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Purpose:	Update OS configuration files for downlevel OS deployments
+	'//
+	'//---------------------------------------------------------------------------
+	Function UpdateConfiguration
+
+		Dim sSysprepInf
+		Dim sUnattendTxt
+		Dim iRetVal
+		
+		sSysprepInf = ""
+		sUnattendTxt = ""
+
+		oLogging.CreateEntry "Updating downlevel OS configuration.", LogTypeInfo
+
+
+		' ---------------------------------------------------------------------------
+		' Update device path entries
+		' ---------------------------------------------------------------------------
+		
+		If sTargetBuild <> 5 then
+		
+			oLogging.CreateEntry "Vista identified, skipping update of Device Path", LogTypeInfo
+
+		Else
+			If oEnvironment.Item("OSDAnswerFilePathSysprep") = "" Then
+				iRetVal = oUtility.FindSysPrepAnswerFile
+			End If
+			IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePathSysPrep")) = False Then
+				iRetVal = oUtility.FindSysPrepAnswerFile
+				TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+			End If
+
+			' If an unattend.txt or sysprep.inf file exist, update them with driver information
+
+			If oEnvironment.Item("OSDAnswerFilePathSysprep") <> "" then
+
+				sSysprepInf = oEnvironment.Item("OSDAnswerFilePathSysprep")
+				UpdateOEMPath sSysprepInf
+
+			End If	
+			If oEnvironment.Item("OSDAnswerFilePath") = "" Then
+				iRetVal = oUtility.FindUnattendAnswerFile
+				TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"			
+			End If
+			IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePath")) = False Then
+				iRetVal = oUtility.FindUnattendAnswerFile
+				TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+			End If
+			
+			If oEnvironment.Item("OSDAnswerFilePath") <> "" then
+
+				sUnattendTxt = oEnvironment.Item("OSDAnswerFilePath")
+				UpdateOEMPath sUnattendTxt
+			End If
+
+			If sSysprepInf <> "" then
+				UpdateDevicePath Left(sSysprepInf, 2)
+			ElseIf sUnattendTxt <> "" then
+				UpdateDevicePath Left(sUnattendTxt, 2)
+			Else
+				UpdateDevicePath sDestinationDrive
+			End If
+
+		End If
+
+		UpdateConfiguration = Success
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Purpose:	Find a driver that matches the specified PnP ID
+	'//
+	'//---------------------------------------------------------------------------
+	Function CopyDrivers(sXPath, fVerifyOEM)
+
+		Dim bAnyFound
+		Dim sFirstPnPID
+		Dim oItem
+		Dim sGuidCollection
+		Dim oPnPID
+		Dim sGUID
+		Dim oNodes
+		Dim iCurrent, iTotal, iPercent
+		
+		Set oNodes = oLocalPNPIDs(sXPath)
+		iTotal = oNodes.length
+		iCurrent = 0
+
+		For each oItem in oNodes
+		
+			bAnyFound = FALSE
+			sFirstPnPID = ""
+			iCurrent = iCurrent + 1
+			
+			For each oPnPID in oItem.childnodes
+			
+				If sFirstPnPID = "" then
+					sFirstPnPID = oPNPID.text
+				End if
+
+				If not dFilteredPnPIDs.Exists(oPNPID.text) then
+				
+					' oLogging.CreateEntry vbTab & "Skipping Device " & oPNPID.text& " No 3rd party drivers found.", LogTypeVerbose
+
+				Else
+
+					bAnyFound = TRUE
+					sGuidCollection = dFilteredPnPIDs.Item(oPNPID.text)
+					oLogging.CreateEntry vbTab & "Found Device " & oPNPID.text & " with 3rd party drivers! Count = " & ubound(split(sGuidCollection,vbTab)) & "  = " & sGuidCollection, LogTypeInfo
+
+					for each sGUID in split(sGuidCollection,vbTab)
+
+						iPercent = CInt((iCurrent / iTotal) * 100)
+						CopySingleDriver sGUID, oPNPID.text, fVerifyOEM, iPercent
+
+					next
+
+				End if 
+			
+			next
+
+			if not bAnyFound and oItem.childnodes.length > 0 then
+				oLogging.CreateEntry "Skipping Device " & sFirstPnPID & " No 3rd party drivers found. " & oItem.childnodes.length, LogTypeInfo
+			end if 
+		
+		Next
+	End function
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Purpose:	Copy a single driver locally
+	'//
+	'//---------------------------------------------------------------------------
+	Function CopySingleDriver(sGUID, sPnPID, fVerifyOEM, iPercent)
+
+		Dim oParent
+		Dim sSource
+		Dim oSource
+		
+		TestAndFail dAllDrivers.Exists(sGUID),7901,"AllDrivers.Exists(" & sGUID & ")"
+
+		set oParent = dAllDrivers.Item(sGUID)
+		set oSource = oParent.SelectSingleNode("./Source")
+		
+		if oSource is nothing then
+		
+			oLogging.CreateEntry  "Driver path not found in XML:  " & sGuid, LogTypeWarning
+			
+		Else
+		
+			sSource = oEnvironment.Item("ResourceRoot") & Mid(oSource.text, 2)
+			oLogging.CreateEntry "Found a driver for " & sPnPID & ": " & sGUID & " from " & sSource, LogTypeInfo
+			sSource = oFSO.GetParentFolderName(sSource)
+
+			If not PlatformCheck(oParent) then
+
+				oLogging.CreateEntry "Skipping driver " & sGUID & " because it is not for this platform (driver " & oUtility.SelectSingleNodeString(oParent,"Platform") & " != OS platform " & sArchitecture & ")", LogTypeInfo
+
+			Elseif fVerifyOEM and not oFSO.FileExists( sSource & "\TxtSetup.oem" ) then
+
+				oLogging.CreateEntry  "DriverPackage is missing txtsetup.oem :  " & sSource & "\TxtSetup.oem" , LogTypeInfo
+
+			Elseif fVerifyOEM then
+
+				oLogging.ReportProgress "Copying OEM driver: " & oParent.SelectSingleNode("./Name").Text, iPercent
+
+				oLogging.CreateEntry  "Copy: " & sSource & "    To: " &  oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE", LogTypeInfo
+				oUtility.RunWithHeartbeat "cmd.exe /c xcopy /ieryh """ & sSource & """ """ & oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE"" 1> NUL 2>NUL"
+				' Windows XP/2003 *may* have problems finding binaries at the $OEM$\TextMode location, copying them to $OEM$\ should help.
+				oUtility.RunWithHeartbeat "cmd.exe /c xcopy /ieryh """ & sSource & """ """ & oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$"" 1> NUL 2>NUL"
+			
+			Else
+
+				oLogging.ReportProgress "Copying driver: " & oParent.SelectSingleNode("./Name").Text, iPercent
+
+				CopyDriverDir sSource, Mid(sSource, Instr(sSource, "Out-of-box Drivers\") + 19)
+
+			End if
+			
+		End If
+	
+	End function
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:	UpdateOEMPath()
+	'//
+	'//  Input:	none
+	'//
+	'//  Return:	Success - 0
+	'//		Failure - 1
+	'//
+	'//  Purpose:	Update the OemPnpDriversPath entry in the specified file
+	'//
+	'//---------------------------------------------------------------------------
+	Function UpdateOEMPath(sConfigurationFile)
+
+		Dim dicDriverPaths
+		Dim sCurrentPath
+		Dim sTmp
+
+
+		' Initialization
+
+		Set dicDriverPaths = CreateObject("Scripting.Dictionary")
+		dicDriverPaths.CompareMode = TextCompare
+
+		' Get the current list of driver paths from the specified file
+		' Strip out any tab characters
+
+		sCurrentPath = oUtility.ReadIni(sConfigurationFile, "Unattended", "OemPnPDriversPath")
+		sCurrentPath = trim(replace(sCurrentPath, vbTab, "", 1, -1, vbTextCompare))
+
+
+		oLogging.CreateEntry "Original " & sConfigurationFile & " section [Unattended] OemPnPDriversPath=" & sCurrentPath, LogTypeInfo
+
+
+		' Split into the component paths
+
+		If Len(sCurrentPath) = 0 then
+			oLogging.CreateEntry sConfigurationFile & " did not contain an OemPnPDriversPath entry.", LogTypeInfo
+		ElseIf Left(sCurrentPath,1) = """" and Right(sCurrentPath,1) = """" then
+			sCurrentPath = Mid(sCurrentPath,2,Len(sCurrentPath)-2)  ' Remove quotes, we'll put them back later
+		ElseIf Left(sCurrentPath,1) = """" then
+			sCurrentPath = Mid(sCurrentPath,2)  ' Remove quotes, we'll put them back later
+		ElseIf Right(sCurrentPath,1) = """" then
+			sCurrentPath = Mid(sCurrentPath,1,Len(sCurrentPath)-1)  ' Remove quotes, we'll put them back later
+		End If
+		
+		For each sTmp in Split(sCurrentPath, ";")
+			If not dicDriverPaths.Exists(sTmp) then
+				dicDriverPaths.Add sTmp, ""
+			End If
+		Next
+
+
+		' Add the list of paths found in the Drivers directory
+
+		If oFSO.FolderExists( sDestinationDrive & "\Drivers") then
+			oLogging.CreateEntry "Checking """ & sDestinationDrive & "\Drivers"" for driver directories to add", LogTypeInfo
+			GetDriverPaths dicDriverPaths, sDestinationDrive & "\Drivers", True
+		Else
+			oLogging.CreateEntry "Driver directory """ & sDestinationDrive & "\Drivers"" does not exist, creating it.", LogTypeInfo
+			On Error Resume Next
+			fso.CreateFolder sDestinationDrive & "\Drivers"
+			On Error Goto 0
+		End If
+
+
+		' Build the new path and write it back to the Sysprep.inf
+		sCurrentPath = ""
+		for each sTmp in dicDriverPaths.Keys
+			If trim(sTmp) <> "" then
+				oStrings.AddToList sCurrentPath, sTmp, ";"
+			End if
+		next
+		oUtility.WriteIni sConfigurationFile, "Unattended", "OemPnPDriversPath", """" & sCurrentPath & """"
+		oLogging.CreateEntry "Updated " & sConfigurationFile & " section [Unattended] with OemPnPDriversPath=" & sCurrentPath, LogTypeInfo
+
+
+		'UpdateOEMPath = iRetVal
+
+	End Function
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:	UpdateDevicePath()
+	'//
+	'//  Input:	sSystemDrive - drive letter (e.g. C:) containing Windows
+	'//
+	'//  Return:	Success - 0
+	'//		Failure - 1
+	'//
+	'//  Purpose:	Update the DevicePath registry key with the Driver directories.
+	'//
+	'//---------------------------------------------------------------------------
+	Function UpdateDevicePath(sSystemDrive)
+
+		Dim bFound
+		Dim sCurrentPath
+		Dim sTmp
+		Dim dicDevicePaths
+		Dim sNewPath
+		Dim sDir
+		Dim iRetVal
+
+
+		oLogging.CreateEntry "------ Updating DevicePath Registry Value ------", LogTypeInfo
+
+		'Create Drivers Directory
+		If g_sDriversDir = "" Then
+			g_sDriversDir = sDestinationDrive & "\Drivers"
+			oUtility.VerifyPathExists g_sDriversDir
+			oFSO.GetFolder(g_sDriversDir).Attributes = 2  ' Make the folder hidden
+		End If
+		' Find the "software" hive
+
+		bFound = False
+		For each sDir in oFSO.GetFolder(sSystemDrive & "\").Subfolders
+			If oFSO.FileExists(sDir & "\system32\config\software") then
+				oLogging.CreateEntry "Trying to load registry file " & sDir & "\system32\config\software", LogTypeInfo
+				iRetVal = oUtility.RunWithHeartbeat("reg load HKLM\NewOS """ & sDir & "\system32\config\software""")
+				If iRetVal = SUCCESS then
+					bFound = True
+					exit for
+				End if
+			End If
+		Next
+		If not bFound then
+			oLogging.CreateEntry "Unable to find the new OS registry file; DevicePath cannot be updated.", LogTypeInfo
+			UpdateDevicePath = Success
+			EXIT FUNCTION
+		End If
+
+
+		' Get the current DevicePath registry key
+
+		Set dicDevicePaths = CreateObject("Scripting.Dictionary")
+		dicDevicePaths.CompareMode = TextCompare
+		sCurrentPath = trim(oShell.RegRead("HKEY_LOCAL_MACHINE\NewOS\Microsoft\Windows\CurrentVersion\DevicePath"))
+		oLogging.CreateEntry "Original DevicePath=" & sCurrentPath, LogTypeInfo
+
+		For each sTmp in Split(sCurrentPath, ";")
+			If not dicDevicePaths.Exists(sTmp) then
+				dicDevicePaths.Add sTmp, ""
+			End If
+		Next
+
+
+		' Add the list of paths found in the Drivers directory (use the same drive letter as Sysprep.inf)
+
+		If oFSO.FolderExists(sSystemDrive & "\Drivers") then
+			oLogging.CreateEntry "Checking """ & sSystemDrive & "\Drivers"" for driver directories to add", LogTypeInfo
+			GetDriverPaths dicDevicePaths, sSystemDrive & "\Drivers", False
+		Else
+			oLogging.CreateEntry "Driver directory """ & sSystemDrive & "\Drivers"" not found, impossible to add driver paths.", LogTypeWarning
+			UpdateDevicePath = Failure
+			EXIT FUNCTION
+		End If
+
+
+		' Build the new path and write it back to the Sysprep.inf
+		sNewPath = ""
+		for each sTmp in dicDevicePaths.Keys
+			oStrings.AddToList sNewPath, sTmp, ";"
+		next
+		oShell.RegWrite "HKEY_LOCAL_MACHINE\NewOS\Microsoft\Windows\CurrentVersion\DevicePath", sNewPath, "REG_EXPAND_SZ"
+		oLogging.CreateEntry "Updated DevicePath=" & sNewPath, LogTypeInfo
+
+		' Unload the registry file
+
+		oShell.Run "reg unload HKLM\NewOS", 0, true
+
+		UpdateDevicePath = Success
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:    MarkupWinNTTextFiles()
+	'//
+	'//  Purpose:    Markup TxtSetup.OEM and Unattend.txt
+	'//
+	'//---------------------------------------------------------------------------
+
+	Function MarkupWinNTTextFiles 
+
+		Dim sDestTxtSetupDisks
+		Dim sDestTxtSetup
+		Dim sDestTxtSetupSCSI
+
+		Dim sUnattendTxt
+		Dim oListSCSI
+		Dim oListFiles
+		Dim oDriversImported
+		Dim iRetVal
+		Dim oItem
+		Dim f
+		Dim sLine
+		Dim sTrimLine
+
+		set oListSCSI = CreateObject("Scripting.Dictionary")
+		set oListFiles = CreateObject("Scripting.Dictionary")
+		set oDriversImported = CreateObject("Scripting.Dictionary")
+		oListSCSI.CompareMode = vbTextCompare
+		oListFiles.CompareMode = vbTextCompare
+		oDriversImported.CompareMode = vbTExtCompare
+
+		sDestTxtSetupDisks = ""
+		sDestTxtSetup = ""
+		sDestTxtSetupSCSI = ""
+
+		oXMLDrivers.xPathFilter = "/*/*[ ( Class = 'SCSIAdapter' or Class = 'hdc' ) and " & oXMLDrivers.XPathFilterString( oXMLDrivers.bEnabled, oXMLDrivers.bHidden ) & "]"
+		sGroupList = "StorageDriverGroup"
+		g_dFilteredDrivers = empty
+		set g_dAllPnPIDs = nothing
+		g_dAllPnPIDs = empty
+		
+		CopyDrivers "/devices/device[not(CompatibleID = 'PCI\CC_0101') or not(CompatibleID)]/*", True
+		
+		for each oItem in oLocalPNPIDs("/devices/device[not(CompatibleID = 'PCI\CC_0101') or not(CompatibleID)]/*")
+
+			If dFilteredPnPIDs.Exists(oItem.text) then
+
+				MarkupTextFilesWinNT dFilteredPnPIDs.Item(oItem.text), oListSCSI, oListFiles, sDestTxtSetupDisks, sDestTxtSetup, sDestTxtSetupSCSI, oDriversImported
+
+			End if
+
+		next
+
+		' ---------------------------------------------------------------------------
+		' Write out the TxtSetup.OEM file to the target location
+		' ---------------------------------------------------------------------------
+		
+		If sDestTxtSetupDisks = "" and sDestTxtSetupSCSI = "" and sDestTxtSetup = "" then
+			oLogging.CreateEntry "MarkupTextFilesWinNT: No files to process", LogTypeInfo
+			Exit Function
+		End if
+
+		oLogging.CreateEntry "Create target file: " & oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE\TXTSetup.OEM", LogTypeInfo
+		oUtility.VerifyPathExists oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE"
+
+		oUtility.RunWithHeartbeat "attrib -r """ & oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE\TXTSetup.OEM"""
+
+		set f = oFSO.CreateTextFile(oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE\TXTSetup.OEM",True)
+		f.WriteLine "[Disks]" & sDestTxtSetupDisks
+		f.WriteLine "[scsi]" & sDestTxtSetupSCSI
+		f.WriteLine sDestTxtSetup
+		f.Close
+		set f = nothing
+
+		' ---------------------------------------------------------------------------
+		' Add the appropriate lines to the unattend.txt file to the target location
+		' ---------------------------------------------------------------------------
+		If oEnvironment.Item("OSDAnswerFilePath") = "" Then
+			iRetVal = oUtility.FindUnattendAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+		End If
+		IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePath")) = False Then
+			iRetVal = oUtility.FindUnattendAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+		End If
+		sUnattendTxt = oEnvironment.Item("OSDAnswerFilePath")
+
+		
+		oLogging.CreateEntry "Markup file: " & sUnattendTxt, LogTypeInfo
+		oUtility.WriteIni sUnattendTxt, "MassStorageDrivers", "",""
+		oUtility.WriteIni sUnattendTxt, "OEMBootFiles", "",""
+
+		set f = oFSO.OpenTextFile(sUnattendTxt,ForAppending,False)
+		f.WriteLine "[OEMBootFiles]"
+		for each sLine in oListFiles.keys
+
+			sTrimLine = ucase(mid(sLine,instr(1,sLine,".",vbTextCompare)+1))
+			if sTrimLine <> "SYS" and sTrimLine <> "INF" and sTrimLine <> "CAT" then
+				' In accordance with Microsoft KB Article q275334, we will move these files. Do not write to unattend.txt.
+				oLogging.CreateEntry "Copy file: " & sLine, LogTypeInfo
+				oUtility.VerifyPathExists oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\$$\OEMDIR"
+				oFileHandling.CopyFile oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\TEXTMODE\" & sLine,  oUtility.LocalRootPath & "\source\" & sPlatformDir & "\$OEM$\$$\OEMDIR\" , TRUE
+			else
+				f.WriteLine sLine
+			end if
+
+		next
+
+
+		f.WriteLine "TXTSetup.OEM"
+		f.WriteLine ""
+		f.WriteLine "[MassStorageDrivers]"
+		for each sLine in oListSCSI.keys
+			if sLine <> "" then
+				f.WriteLine sLine + " = OEM"
+			end if
+		next
+
+
+		' Write a fallback entry
+
+		WriteFallbackEntry f
+
+
+		' Cleanup
+
+		f.Close
+		set f = nothing
+
+
+		'Only Create the bak file if debugging
+
+		If oLogging.Debug then
+			oFSO.CopyFile sUnattendTxt,sUnattendTxt & ".bak", TRUE
+		End If
+
+
+	End function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:    WriteFallbackEntry()
+	'//
+	'//  Purpose:    Write a mass storage driver fallback entry to Unattend.txt
+	'//
+	'//---------------------------------------------------------------------------
+	Function WriteFallbackEntry(f)
+
+		Dim sFallback
+		Dim sSif
+
+
+		' If we can't find the txtsetup.sif file, bail out
+
+		sSif = oEnvironment.Item("SourcePath") & "\" & sPlatformDir & "\txtsetup.sif"
+		If not oFSO.FileExists(sSif) then
+
+			oLogging.CreateEntry "Unable to find the TXTSETUP.SIF file needed to find the localized string for the default IDE controller.  No fallback entry will be created.", LogTypeInfo
+			Exit Function
+
+		End if
+
+
+		' Read the entry
+
+		sFallback = Trim(oUtility.ReadIni(sSif, "SCSI", "atapi"))
+		If sFallback = "" then
+
+			oLogging.CreateEntry "Unable to find the SCSI atapi entry in " & oUtility.LocalRootPath & "\source\" & sPlatformDir & "\TXTSETUP.SIF.  No fallback entry will be created.", LogTypeInfo
+			Exit Function
+
+		End if
+
+
+		' Write the entry
+
+		oLogging.CreateEntry "Writing fallback entry in unattend.txt:", LogTypeInfo
+		oLogging.CreateEntry sFallback & " = RETAIL", LogTypeInfo
+
+		f.WriteLine sFallback & " = RETAIL"
+
+	End function
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:    MarkupTextFiles()
+	'//
+	'//  Purpose:    Markup TxtSetup.OEM and Unattend.txt
+	'//
+	'//---------------------------------------------------------------------------
+	Function MarkupTextFilesWinNT ( oStorageGUIDs, ByRef oListSCSI, ByRef oListFiles, ByRef sDestTxtSetupDisks, ByRef sDestTxtSetup, ByRef sDestTxtSetupSCSI, byRef oDriversImported )
+
+		Dim sTxtSetOEM
+		Dim sGuid
+		Dim oListFilesPackage
+		Dim f
+		Dim sLine
+		Dim sTrimLine
+		Dim fIsFirst
+		Dim sSectionName
+		Dim sExtName
+		Dim oItem
+
+		MarkupTextFilesWinNT = Success
+		fIsFirst = True
+
+		oLogging.CreateEntry "MarkupTextFilesWinNT: " & oStorageGUIDs, LogTypeInfo
+
+		set oListFilesPackage = CreateObject("Scripting.Dictionary")
+		oListFilesPackage.CompareMode = vbTextCompare
+
+		' ---------------------------------------------------------------------------
+		' Read each TxtSetup.OEM file from oDrivers
+		' ---------------------------------------------------------------------------
+
+		for each sGuid in split( oStorageGUIDs , vbTab )
+		
+			TestAndFail dAllDrivers.Exists(sGUID),7904,"AllDrivers.Exists(" & sGUID & ")"
+			set oItem = dAllDrivers.Item(sGUID)
+
+			sTxtSetOEM = oUtility.SelectSingleNodeString(oItem,"./Source")
+			sTxtSetOEM = oEnvironment.Item("ResourceRoot") & Mid(ofso.GetParentFolderName ( sTxtSetOEM ), 2) & "\TxtSetup.oem"
+			
+			If not oFSO.FileExists( sTxtSetOEM ) then
+			
+				oLogging.CreateEntry "FileMissing, Skip: " & sTxtSetOEM, LogTypeInfo
+			
+			ElseIf not PlatformCheck(oItem) then
+
+				oLogging.CreateEntry "Skipping driver " & sGUID & " because it is not for this platform (driver " & oUtility.SelectSingleNodeString(oItem,"Platform") & " != OS platform " & sArchitecture & ")", LogTypeInfo
+
+			ElseIf oDriversImported.Exists(sTxtSetOEM) then
+
+				oLogging.CreateEntry "Driver has already been imported: " & sTxtSetOEM, LogTypeInfo
+
+			Else
+			
+				oLogging.CreateEntry "Markup(" & fIsFirst & "): " & sGuid & " -> " & sTxtSetOEM, LogTypeInfo
+
+				oListFilesPackage.RemoveAll
+
+				oDriversImported.Add sTxtSetOEM,""
+
+				set f = oFSO.OpenTextFile( sTxtSetOEM, ForReading )
+				Do While not f.AtEndOfStream
+
+					'
+					' Parse each line
+					'
+
+					sLine = f.ReadLine
+					sTrimLine = TrimWS(sLine)
+
+					if len(sLine) = 0 or left(sLine,1) = "#" or left(sLine,1) = ";" then
+
+						' Comments - Do nothing
+
+					elseif left(sTrimLine,1) = "[" then
+
+						' This is a [Section] line
+
+						sSectionName = lcase(mid(sTrimLine,2,instr(1,sTrimLine,"]",vbTextCompare)-2))
+
+						if instr(1,sDestTxtSetup,"[" & sSectionName & "]",vbTextCompare) <> 0 and ucase(sSectionName) <> "DEFAULTS" then
+							oLogging.CreateEntry "Section [" & sSectionName & "] found in more than one file, possible conflict: " & sTxtSetOEM, LogTypeWarning
+						end if
+
+						if instr(1,sSectionName,".",vbTextCompare) then
+							sSectionName = mid(sSectionName,1,instr(1,sSectionName,".",vbTextCompare)-1)
+						end if
+
+						if sSectionName = "files" or sSectionName = "config" or sSectionName = "hardwareids" then
+							sDestTxtSetup = sDestTxtSetup & vbNewLine & sLine
+						end if
+
+					else
+
+						' This is a regular line, process according to the section type.
+
+						if sSectionName = "disks" then
+
+							' Normalize the line
+							sDestTxtSetupDisks = sDestTxtSetupDisks & vbNewLine & mid( sTrimLine, 1, instr( 1, sTrimLine, "=", vbTextCompare ) )
+							sDestTxtSetupDisks = sDestTxtSetupDisks & " ""Microsoft Deployment 3rd party driver directory"", \txtsetup.oem, \"
+
+						elseif sSectionName = "defaults" and fIsFirst then
+
+							' Output only the 1st instance of this section
+							sDestTxtSetup = sDestTxtSetup & vbNewLine & "[Defaults]" & vbNewLine & sLine
+
+						elseif sSectionName = "scsi" then
+
+							sDestTxtSetupSCSI = sDestTxtSetupSCSI & vbNewLine & sLine
+
+							sTrimLine = TrimWS(mid(sTrimLine,instr(1,sTrimLine,"=",vbTextCompare)+1))
+							if left(sTrimLine,1) = """" then
+								sTrimLine = TrimWS(mid(sTrimLine,1,instr(3,sTrimLine,"""",vbTextCompare)))
+							elseif instr(1,sTrimLine,",",vbTextCompare) <> 0 then
+								sTrimLine = TrimWS(mid(sTrimLine,1,instr(1,sTrimLine,",",vbTextCompare)-1))
+							end if
+
+							if oListSCSI.exists(sTrimLine) then
+								oLogging.CreateEntry "SCSI Driver Name [" & sTrimLine & "] found in more than one file in " & sTxtSetOEM, LogTypeWarning
+							else
+								oListSCSI.Add sTrimLine,""
+							end if
+
+						elseif sSectionName = "files" then
+
+							sTrimLine = TrimWS(mid(sTrimLine,instr(1,sTrimLine,",",vbTextCompare)+1))
+							if instr(1,sTrimLine,",",vbTextCompare) <> 0 then
+								sTrimLine = TrimWS(mid(sTrimLine,1,instr(1,sTrimLine,",",vbTextCompare)-1))
+							end if
+
+							sExtName = ucase(mid(sTrimLine,instr(1,sTrimLine,".",vbTextCompare)+1))
+							if sExtName = "SYS" or sExtName = "INF" or sExtName = "CAT" then
+								sDestTxtSetup = sDestTxtSetup & vbNewLine & sLine
+							end if
+
+							if not oListFilesPackage.exists(sTrimLine) then
+								oListFilesPackage.Add sTrimLine,""
+							end if
+
+						elseif sSectionName = "config" or sSectionName = "hardwareids" then
+
+							sDestTxtSetup = sDestTxtSetup & vbNewLine & sLine
+
+						end if
+
+					end if
+
+				Loop
+
+				for each sTrimLine in oListFilesPackage.Keys
+
+					if oListFiles.exists(sTrimLine) then
+						oLogging.CreateEntry "Driver File [" & sGUID & " " & sTrimLine & "] duplicate found in " & oListFiles.Item(sTrimLine), LogTypeWarning
+					else
+						oListFiles.Add sTrimLine,sGUID
+					end if
+
+				next
+
+				f.Close
+				set f = nothing
+				fIsFirst = false
+
+				exit for
+			
+			End if
+
+		next
+
+	End function
+
+	Function MarkupTextFilesSysPrep ( oStorageGUIDs )
+
+		Dim iRetVal
+		Dim oListPnP
+		Dim oListINFs
+		Dim sGuid
+		Dim sGuidDone
+		Dim sTxtSetOEMfull
+		Dim sTxtSetOEM
+		Dim f
+		Dim sLine
+		Dim sTrimLine
+		Dim sSectionName
+		Dim sSectionID
+		Dim sUnattendTxt
+		Dim oItem
+		Dim sSource
+
+		'
+		' Markup TxtSetup.OEM file
+		'
+
+		set oListPnP = CreateObject("Scripting.Dictionary")
+		oListPnP.CompareMode = vbTextCompare
+
+		set oListINFs = CreateObject("Scripting.Dictionary")
+		oListINFs.CompareMode = vbTextCompare
+
+		' ---------------------------------------------------------------------------
+		' Read each TxtSetup.OEM file from oStorageGUIDS
+		' ---------------------------------------------------------------------------
+
+			for each sGUID in oStorageGUIDs
+			
+				set oItem = dFilteredDrivers.Item(sGUID)
+				TestAndFail not oItem is nothing , 7908, "Test dFilteredDrivers.Item(" & sGUID& ")"
+				
+				sTxtSetOEMfull = oUtility.SelectSingleNodeString(oItem, "./Source")
+				sSource = oEnvironment.Item("ResourceRoot") & Mid(ofso.GetParentFolderName ( sTxtSetOEMfull ), 2)
+				sTxtSetOEM =  sSource & "\TxtSetup.oem"
+
+				If instr(1,sGuidDone, sGUID, vbTextCompare ) <> 0 then
+				
+					oLogging.CreateEntry  "Skip, Already parsed " & sGUID, LogTypeInfo
+				
+				ElseIf not PlatformCheck(oItem) then
+
+					oLogging.CreateEntry "Skipping driver " & sGUID & " because it is not for this platform (driver " & oUtility.SelectSingleNodeString(oItem,"Platform") & " != OS platform " & sArchitecture & ")", LogTypeInfo
+
+				Elseif not oFSO.FileExists( sTxtSetOEM ) then
+
+					oLogging.CreateEntry  "Driver Package " & sGUID & " is missing txtsetup.oem :  " & sTxtSetOEM , LogTypeInfo
+				
+				Else
+
+					oLogging.CreateEntry "Markup:  " & sGuid & " -> " & sTxtSetOEM, LogTypeInfo
+					
+					' Copy Files first.
+					
+					CopyDriverDir sSource, Mid(sSource, Instr(sSource, "Out-of-box Drivers\") + 19)
+				
+					' PArse TxtSetup.OEM
+					set f = oFSO.OpenTextFile( sTxtSetOEM, ForReading )
+					Do While not f.AtEndOfStream
+
+						'
+						' Parse each line
+						'
+
+						sLine = f.ReadLine
+						sTrimLine = TrimWS(sLine)
+
+						if len(sLine) = 0 or left(sLine,1) = "#" or left(sLine,1) = ";" then
+
+							' Comments - Do nothing
+
+						elseif left(sTrimLine,1) = "[" then
+
+							' This is a [Section] line
+
+							sSectionName = lcase(mid(sTrimLine,2,instr(1,sTrimLine,"]",vbTextCompare)-2))
+							sSectionID = ""
+
+							if instr(1,sSectionName,".",vbTextCompare) then
+								sSectionID =  mid(sSectionName,instr(1,sSectionName,".",vbTextCompare)+1)
+								sSectionName = mid(sSectionName,1,instr(1,sSectionName,".",vbTextCompare)-1)
+
+								if instr(1,sSectionID,".",vbTextCompare) then
+									sSectionID =  mid(sSectionID,instr(1,sSectionID,".",vbTextCompare)+1)
+								end if
+							end if
+
+						else
+
+							' This is a regular line, process according to the section type.
+
+							if sSectionName = "hardwareids" then
+
+								sTrimLine = TrimWS(mid(sTrimLine,instr(1,sTrimLine,"=",vbTextCompare)+1))
+								if instr(1,sTrimLine,",",vbTextCompare) <> 0 then
+									sTrimLine = TrimWS(mid(sTrimLine,1,instr(1,sTrimLine,",",vbTextCompare)-1))
+								end if
+
+								if not oListPnP.exists(sTrimLine) then
+									oListPnP.Add sTrimLine, sGUID & "." & sSectionID & "." & sSectionName
+								end if
+
+							elseif sSectionName = "files" then
+
+								sTrimLine = TrimWS(mid(sTrimLine,instr(1,sTrimLine,"=",vbTextCompare)+1))
+								if instr(1,sTrimLine,",",vbTextCompare) <> 0 then
+									sTrimLine = TrimWS(mid(sTrimLine,instr(1,sTrimLine,",",vbTextCompare)+1))
+								end if
+								if instr(1,sTrimLine,",",vbTextCompare) <> 0 then
+									sTrimLine = TrimWS(mid(sTrimLine,1,instr(1,sTrimLine,",",vbTextCompare)-1))
+								end if
+
+								if ucase(right(sTrimLine,4)) = ".INF" then
+									if not oListINFs.exists(sGUID & "." & sSectionID & ".hardwareids") then
+										oListINFs.Add sGUID & "." & sSectionID & ".hardwareids",  _
+										oFSO.GetParentFolderName ( sDestinationDrive & "\Drivers\" & _
+										Mid(sTxtSetOEMfull, Instr(sTxtSetOEMfull, "Out-of-box Drivers\") + 19) ) & "\" & sTrimLine
+									end if
+								end if
+
+							end if
+
+						end if
+
+					Loop
+
+					f.Close
+					set f = nothing
+
+					sGuidDone = sGuidDone & "," & sGUID
+
+				end if
+
+			next
+
+
+		If oListPnP.Count = 0 then
+			oLogging.CreateEntry "MarkupTextFilesSysPrep: No files to process", LogTypeInfo
+			Exit Function
+		End if
+
+		' ---------------------------------------------------------------------------
+		' Add the appropriate lines to the unattend.txt file to the target location
+		' ---------------------------------------------------------------------------
+		If oEnvironment.Item("OSDAnswerFilePathSysprep") = "" Then
+			iRetVal = oUtility.FindSysprepAnswerFile
+		End If
+		IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePathSysPrep")) = False Then
+			iRetVal = oUtility.FindSysPrepAnswerFile
+			TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+		End If
+		sUnattendTxt = oEnvironment.Item("OSDAnswerFilePathSysprep")
+
+		oLogging.CreateEntry "Markup file: " & sUnattendTxt, LogTypeInfo
+		oUtility.WriteIni sUnattendTxt, "Sysprep", "BuildMassStorageSection","Yes"
+		oUtility.WriteIni sUnattendTxt, "SysprepMassStorage", "", ""
+
+		set f = oFSO.OpenTextFile(sUnattendTxt,ForAppending,False)
+		f.WriteLine "[SysprepMassStorage]"
+		for each sLine in oListPnP.keys
+			if sLine <> "" then
+				f.WriteLine sLine + "=""" & oListINFs.Item(oListPnP.Item(sLine)) & """"
+			end if
+		next
+		f.Close
+		set f = nothing
+		If oLogging.Debug Then
+			oFSO.CopyFile sUnattendTxt,sUnattendTxt & ".bak", TRUE
+		End If
+
+	End function
+
+
+
+	Function TrimWS( sTrimStr ) 
+		TrimWS = oStrings.TrimAllWS( STrimStr )
+	End function
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:	GetDriverPaths()
+	'//
+	'//  Input:	dicPaths - dictionary object to hold retrieved paths
+	'//		sPath - path to check
+	'//		bRelative - flag to indicate whether paths should be relative
+	'//
+	'//  Return:	(via dicPaths)
+	'//
+	'//  Purpose:	Scan the specified directory to determine what paths need to be
+	'//		added
+	'//
+	'//---------------------------------------------------------------------------
+	Sub GetDriverPaths(dicPaths, sPath, bRelative)
+
+		Dim objFolder, objFile, objSubFolder
+		dim sCurrentDir
+
+
+		' See if there are any INF files in the current directory
+
+		Set objFolder = oFSO.GetFolder(sPath)
+		For each objFile in objFolder.Files
+			If UCase(oFSO.GetExtensionName(objFile.Name)) = "INF" then
+				If bRelative then
+					sCurrentDir = Mid(objFolder.Path, 3)
+				Else
+					sCurrentDir = "%SystemDrive%" & Mid(objFolder.Path, 3)
+				End If
+				If not dicPaths.Exists(sCurrentDir) then
+					dicPaths.Add sCurrentDir, ""
+					oLogging.CreateEntry "Found new driver path: " & sCurrentDir, LogTypeInfo
+				End If
+				Exit For
+			End If
+		Next
+
+
+		' Check each of the subfolders
+		For each objSubFolder in objFolder.SubFolders
+			GetDriverPaths dicPaths, objSubFolder.Path, bRelative
+		Next
+
+	End Sub
+
+
+	'//---------------------------------------------------------------------------
+	'//
+	'//  Function:	CopyDriverDir()
+	'//
+	'//  Purpose:	Copies a specific driver directory to C:\Drivers
+	'//
+	'//---------------------------------------------------------------------------
+	Function CopyDriverDir(sPath,sDriversTarget)
+
+		Dim iRetVal
+
+		If g_sDriversDir = "" then
+
+			g_sDriversDir = sDestinationDrive & "\Drivers"
+			oUtility.VerifyPathExists g_sDriversDir
+			oFSO.GetFolder(g_sDriversDir).Attributes = 2  ' Make the folder hidden
+
+		End if
+
+		' Make sure the Source path specified exists
+
+		sPath = oEnvironment.Substitute(sPath)
+		oUtility.ValidateConnection sPath
+
+		If not oFSO.FolderExists(sPath) then
+			oLogging.CreateEntry "WARNING - Invalid driver path " & sPath & " specified - no copying will be done.", LogTypeWarning
+			CopyDriverDir = Failure
+			EXIT FUNCTION
+		End If
+
+
+		' Copy the drivers
+
+		oLogging.CreateEntry "Copying drivers from """ & sPath & """ to """ & g_sDriversDir & "\" & sDriversTarget & """", LogTypeInfo
+		oUtility.RunWithHeartbeat "cmd.exe /c xcopy /seihycd """ & sPath & """ """ & g_sDriversDir & "\" & sDriversTarget & """ 1> NUL 2>NUL"
+
+	End Function
+	
+	
+	Public Function PlatformCheck ( oParent ) 
+	
+		dim oEntry
+	
+		PlatformCheck = FALSE
+		
+		for each oEntry in oParent.SelectNodes("Platform")
+		
+			If ucase(oEntry.Text) = ucase(sArchitecture) then
+				PlatformCheck = TRUE
+				exit for
+			End if 
+		
+		next
+	
+	End function 
+	
+	
+	' ---------------------------------------------------------------------------
+	' Use the Microsoft.BDD.PnPEnum.exe tool to enumerate through all PnPID on the system.
+	' ---------------------------------------------------------------------------
+	Function oLocalPNPIDs(sFilter)
+		Dim iRetVal
+		DIm sEnum
+	
+		iRetVal = oUtility.FindFile("Microsoft.BDD.PnpEnum.exe", sEnum)
+		TestAndFail iRetVal, 7900, "Findfile: Microsoft.BDD.PnpEnum.exe"
+
+		oUtility.RunWithHeartbeat "cmd /c """ & sEnum & """ > " & oLogging.LogPath & "\PnpEnum.xml"
+
+		' Load the resulting XML
+		set oLocalPNPIDs = oUtility.CreateXMLDOMObjectEx(oLogging.LogPath & "\PnpEnum.xml").SelectNodes(sFilter)
+
+	End function
+
+
+	Function dAllDrivers
+		' Returns a list of All drivers (guid to oxmldomnode)
+		set dAllDrivers = oXMLDrivers.FindAllItems
+
+	End function
+
+	Function dFilteredDrivers
+		' Returns a list of drivers (guid to oxmldomnode)
+
+		If isempty(g_dFilteredDrivers) then
+			oXMLDrivers.sGroupList = sGroupList
+			set g_dFilteredDrivers = oXMLDrivers.FindItems
+			oLogging.CreateEntry "Filtered.Count: " & g_dFilteredDrivers.Count, LogTypeInfo
+		End if 
+		
+		set dFilteredDrivers = g_dFilteredDrivers
+
+	End function
+
+	Function dFilteredPnPIDs
+		' Returns a collection of filtered Driver PNPIDs' to Driver GUID's
+		Dim oDevice
+		Dim oPnPId
+
+		If isempty(g_dAllPnPIDs) then
+		
+			set g_dAllPnPIDs = CreateObject("Scripting.Dictionary")
+			g_dAllPnPIDs.CompareMode = TextCompare
+
+			for each oDevice in dFilteredDrivers.Items
+				for each oPnPID in oDevice.SelectNodes("./PNPId")
+					if g_dAllPnPIDs.Exists( oPnPID.Text ) then
+						g_dAllPnPIDs.Item( oPnPID.TExt ) = g_dAllPnPIDs.Item( oPnPID.TExt ) & vbTab & oDevice.attributes.getNamedItem("guid").value
+					else
+						g_dAllPnPIDs.add oPnPID.Text, oDevice.attributes.getNamedItem("guid").value
+					end if
+				next
+			next
+			oLogging.CreateEntry "Indexed PnP Ids: " & g_dAllPnPIDs.Count, LogTypeInfo
+
+		End if 
+		
+		set dFilteredPnPIDs = g_dAllPnPIDs
+
+	End function
+
+
+End Class
+
+	</script>
+</job>

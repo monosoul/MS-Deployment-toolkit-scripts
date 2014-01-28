@@ -1,0 +1,250 @@
+<job id="ZTINICConfig">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTINICUtility.vbs"/>
+	<script language="VBScript" src="ZTIDataAccess.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTINICConfig.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Configure network adapters
+' // 
+' // Usage:     cscript ZTINICConfig.wsf [/debug:true] [/ForceCapture] [/RestoreWithinWinPE]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTINICConfig
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		'//----------------------------------------------------------------------------
+		'//  Main routine
+		'//----------------------------------------------------------------------------
+
+		Dim i
+		Dim oItem
+		Dim oAdapter
+		Dim AdapterCount
+		Dim oFoundDevice
+		Dim SaveMACAddress
+		Dim bIsDitry
+		dim arrDrives
+
+		bIsDitry = false
+		Main = success
+		
+		If ucase(oEnv("SystemDrive")) = "X:" and ( ucase(oEnvironment.Item("PHASE")) = "STATERESTORE" or ucase(oEnvironment.Item("PHASE")) = "STATECAPTURE" ) Then
+			If not oUtility.Arguments.Exists("RestoreWithinWinPE") Then 
+				'
+				oLogging.CreateEntry "Environment Error: ManualRetry (From ZTINicConfig).", LogTypeInfo
+
+				oEnvironment.Item("LTISuspend") = "LiteTouch is trying to perform NIC configuration." & _
+					vbNewLine & "This cannot be performed in Windows PE." & _
+					vbNewLine & "If booting from a USB Flash Disk, please remove all drives before restarting." & _
+					vbNewLine & "Otherwise, ensure the hard disk is selected first in the boot order of the BIOS."
+				oEnvironment.Item("SMSTSRebootRequested") = "true"
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+				iRetVal = SUCCESS
+				Exit Function
+			End if 
+		End if
+
+		oLogging.CreateEntry oUtility.ScriptName & " Script Entered." , LogTypeInfo
+		oLogging.CreateEntry "             PHASE = " & oEnvironment.Item("PHASE") , LogTypeInfo
+		oLogging.CreateEntry " Deployment Method = " & oEnvironment.Item("DeploymentMethod") , LogTypeInfo
+		oLogging.CreateEntry "   Deployment Type = " & oEnvironment.Item("DeploymentType") , LogTypeInfo
+
+		'//----------------------------------------------------------------------------
+		'//  Check Current State
+		'//----------------------------------------------------------------------------
+
+		If (oEnvironment.Item("DEPLOYMENTTYPE") = "REFRESH" and ucase(oEnvironment.Item("PHASE")) = "STATECAPTURE") or _
+			Wscript.arguments.named.Exists("ForceCapture") Then
+
+			'//----------------------------------------------------------------------------
+			'//  Capture Network Settings if requested
+			'//----------------------------------------------------------------------------
+
+			If ucase(trim(oEnvironment.Item("OSDMigrateAdapterSettings"))) = "NO" or _
+			ucase(trim(oEnvironment.Item("OSDMigrateAdapterSettings"))) = "FALSE" Then
+
+				' Network Migration turned on by default.
+				oLogging.CreateEntry "Do not Capture Network Settings.", LogTypeInfo
+
+			Else
+
+				oLogging.CreateEntry "Capture Network Settings from local machine and write to Environment.", LogTypeInfo
+
+				If ObjNetworkAdapters.Count = 0 then
+					oLogging.CreateEntry "No network cards found to backup.", LogTypeInfo
+					Main = Success
+					Exit Function
+				Else
+					' There are multiple NIC Cards on this machine, save the MACAddress so we know which card get's which Configuration.
+					SaveMACAddress = TRUE
+				End If
+
+				i = 0
+				For each oAdapter in ObjNetworkAdapters
+
+					If not oAdapter.DHCPENabled then
+						SaveNetworkAdapterSettings oAdapter, i, SaveMACAddress
+						i = i + 1
+					End If
+
+				Next
+
+				oEnvironment.Item("OSDAdapterCount") = i
+
+			End If
+
+			Main = success
+
+		ElseIf ((oEnvironment.Item("DEPLOYMENTTYPE") = "REFRESH" or oEnvironment.Item("DEPLOYMENTTYPE") = "NEWCOMPUTER" or oEnvironment.Item("OSGUID") = "") and _
+			ucase(oEnvironment.Item("PHASE")) = "STATERESTORE") or Wscript.arguments.named.Exists("RestoreWithinWinPE") Then
+
+			'//----------------------------------------------------------------------------
+			'//  Restore Network Settings from configuration file if present
+			'//----------------------------------------------------------------------------
+
+			AdapterCount = 0
+			If isnumeric(oEnvironment.Item("OSDAdapterCount")) then
+				AdapterCount = cint(oEnvironment.Item("OSDAdapterCount"))
+			End If
+
+			If AdapterCount = 0 then
+				oLogging.CreateEntry "No Settings Saved, Exit...", LogTypeInfo
+				Main = Success
+				Exit Function
+			End If
+
+			oLogging.CreateEntry "Network Config Adapter Count: " & AdapterCount, LogTypeInfo
+
+			If ObjNetworkAdapters.Count = 0 then
+				oLogging.CreateEntry "No network cards found to restore.", LogTypeInfo
+				Main = Success
+				Exit Function
+			End If
+
+			'
+			'  For each network adapter in the Saved list...
+			'
+			For i = 0 to AdapterCount - 1
+
+				oLogging.CreateEntry "Restore Network Settings (" & i & ").", LogTypeInfo
+
+				' A Saved Entry might be bound to a specific Network Adapter, either via
+				' MACAddress, Index, or Name. If present, find the associated adapter.
+
+				set oFoundDevice = nothing
+
+				If LoadAdapterSetting( i, "MacAddress" ) <> "" then
+
+					For each oAdapter in ObjNetworkAdapters
+						If oAdapter.MacAddress = LoadAdapterSetting( i, "MacAddress" ) then
+							oLogging.CreateEntry "Found Network MAC Settings (" & oAdapter.MacAddress & ") = " & oAdapter.Description, LogTypeInfo
+							set oFoundDevice = oAdapter
+							Exit For
+						End If
+					Next
+
+				Else
+
+						Dim j
+						j = 0
+						For each oAdapter in ObjNetworkAdapters
+							If j = i then
+								oLogging.CreateEntry "Found Network Settings (" & oAdapter.MacAddress & ") = " & oAdapter.Description, LogTypeInfo
+								set oFoundDevice = oAdapter
+								exit for
+							End If
+							j = j + 1
+						Next
+
+				End If
+
+				If not oFoundDevice is nothing then
+					LoadNetworkAdapterSettings oFoundDevice, i
+					bIsDitry = true
+				Else
+					oLogging.CreateEntry "No match found for Adapter(" & i & ")" , LogTypeInfo
+				End If
+
+			Next
+
+			If bIsDitry = true and ( oUtility.dicNetworkConnections.Count > 0 or oNetwork.EnumNetworkDrives.Count > 0 ) then
+
+				oLogging.CreateEntry "Network Settings have changed. Restablish connection to DeployRoot", LogTypeInfo
+
+				' Discconnect
+				oUtility.dicNetworkConnections.RemoveAll
+
+				Set arrDrives = oNetwork.EnumNetworkDrives
+				For i = 0 to arrDrives.Count - 1 Step 2
+					If arrDrives.Item(i) <> "" and instr(1, arrDrives.Item(i+1), oEnvironment.Item("DeployRoot"), vbTextCompare) <> 0 then
+						oLogging.CreateEntry "Net Use Delete: " & arrDrives.Item(i) & " = " & arrDrives.Item(i+1), LogTypeInfo
+						oNetwork.RemoveNetworkDrive arrDrives.Item(i), True
+					End if
+				Next
+
+				' Reconnect
+				oUtility.sScriptDir = WScript.FullName & "\.."
+				oUtility.ValidateConnectionEx oEnvironment.Item("DeployRoot"), True
+
+				oEnvironment.Item("DeployDrive") = oUtility.FindMappedDrive(oEnvironment.Item("DeployRoot"))
+				oLogging.CreateEntry "DeployDrive = " & oEnvironment.Item("DeployDrive"), LogTypeInfo
+				oUtility.sScriptDir = oFSO.GetParentFolderName(WScript.ScriptFullName)
+
+			End If
+
+			Main = Success
+
+		End If
+
+	End Function
+
+End Class
+
+	</script>
+</job>

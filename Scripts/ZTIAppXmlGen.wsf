@@ -1,0 +1,255 @@
+<job id="ZTIAppXmlGen">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIAppXmlGen.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Generate an XML file for automatically capturing user data
+' //            (documents) associated with installed applications.
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIAppXmlGen.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+const HKEY_LOCAL_MACHINE = &H80000002
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIAppXmlGen
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public globalVariable
+	Private privateVariable
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim iRetVal
+		Dim sFile
+		Dim oFile
+		Dim oReg
+		Dim arrSubKeys
+		Dim sSubkey
+		Dim sAppKey
+		Dim sCommand
+		Dim oMigXml
+		Dim sUSMTVersion
+		Dim sScanStateFolder
+		Dim sFoundScanstate
+		Dim bFoundUSMT
+		
+		iRetVal = SUCCESS
+
+
+		'//----------------------------------------------------------------------------
+		'//  Determine the version of USMT to use
+		'//----------------------------------------------------------------------------
+		
+		If Ucase(oEnvironment.Item("USMT3")) = "YES" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) < "6.1" then
+		
+			oLogging.CreateEntry "Setting USMT version to USMT3", LogTypeInfo
+			sUSMTVersion = "USMT3"
+			
+		Elseif Ucase(oEnvironment.Item("USMT4")) = "YES" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) < "6.2" and Left(oEnvironment.Item("OSCURRENTVERSION"),3) >= "6.0" then
+		
+			oLogging.CreateEntry "Setting USMT version to USMT4", LogTypeInfo
+			sUSMTVersion = "USMT4"
+			
+		Else
+
+			If Left(oEnvironment.Item("ImageBuild"),3) < "6.0" and oEnvironment.Item("DeploymentType") <> "REPLACE" and oEnvironment.Item("DeploymentMethod") <> "SCCM" Then
+				oLogging.CreateEntry "Windows XP is being deployed, assuming USMT 3", LogTypeInfo
+				sUSMTVersion = "USMT3"
+			Else
+				
+				sScanStateFolder = oEnvironment.Item("DeployRoot") & "\Tools\" & oEnvironment.item("Architecture")
+				If  oFSO.FileExists (sScanStateFolder & "\USMT5\scanstate.exe") then
+					If Left(oFSO.GetFileVersion(sScanStateFolder & "\USMT5\scanstate.exe"),3) >= "6.2"  then
+						oLogging.CreateEntry "Found USMT 5 executables. Using USMT 5", LogTypeInfo
+						sUSMTVersion = "USMT5"
+						bFoundUSMT = True
+					Else
+						oLogging.CreateEntry "The USMT files in " & sScanStateFolder & "\USMT5 are the wrong version - " & oFSO.GetFileVersion(sScanStateFolder & "\USMT5\scanstate.exe"), LogTypeInfo
+					End if
+				End if
+			
+				If  oFSO.FileExists (sScanStateFolder & "\USMT4\scanstate.exe") and bFoundUSMT <> True then
+					If Left(oFSO.GetFileVersion(sScanStateFolder & "\USMT4\scanstate.exe"),3) = "6.1"  then
+						oLogging.CreateEntry "Found USMT 4 executables. Using USMT 4", LogTypeInfo
+						sUSMTVersion = "USMT4"
+						bFoundUSMT = True
+					Else
+						oLogging.CreateEntry "The USMT files in " & sScanStateFolder & "\USMT4 are the wrong version - " & oFSO.GetFileVersion(sScanStateFolder & "\USMT4\scanstate.exe"), LogTypeInfo
+					End if
+				End if		
+						
+				If bFoundUSMT <> True then
+					oLogging.CreateEntry "USMT executables were not found, assuming USMT 3 installer", LogTypeInfo
+					sUSMTVersion = "USMT3"
+				End if
+				
+			End if
+		End if
+
+		If Right(sUSMTVersion,1) > "3" Then
+
+			oLogging.CreateEntry "Application XML is not needed for USMT " & Right(sUSMTVersion,1) , LogTypeInfo
+			Main = iRetval
+			Exit Function
+			
+		End If
+
+
+		' Main script processing
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+
+
+		' Create the file and write the standard header
+
+		sFile = oUtility.LogPath & "\ZTIAppXmlGen.xml"
+		Set oFile = oFSO.CreateTextFile(sFile, True, False)
+
+		oFile.WriteLine "<?xml version=""1.0"" encoding=""UTF-8""?>"
+		oFile.WriteLine "<migration urlid=""http://www.microsoft.com/migration/1.0/migxmlext/ZTIAppXmlGen"">"
+
+		oFile.WriteLine "    <_locDefinition>"
+		oFile.WriteLine "    <_locDefault _loc=""locNone""/>"
+		oFile.WriteLine "    <_locTag _loc=""locData"">displayName</_locTag>"
+		oFile.WriteLine "    </_locDefinition>"
+
+		oFile.WriteLine "    <component type=""Documents"" context=""System"">"
+		oFile.WriteLine "        <displayName _locID=""miguser.userdata"">ZTI AppXmlGen User Data</displayName>"
+		oFile.WriteLine "        <role role=""Data"">"
+		oFile.WriteLine "            <rules>"
+		oFile.WriteLine "                <include>"
+		oFile.WriteLine "                    <objectSet>"
+
+
+		' Get the list of all registry keys in HKCR
+
+		Set oReg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")
+
+		oReg.EnumKey HKEY_LOCAL_MACHINE, "Software\Classes", arrSubKeys
+
+
+		' Look at all file extensions to see if they map to an application
+
+		For Each sSubkey In arrSubKeys
+
+			' Check exclusion list
+
+			If Instr(".MP3 .MOV .WMA .WMV .CHM .EVT .EVTX .EXE .COM .FON", UCase(sSubKey)) > 0 then
+
+				oLogging.CreateEntry "Skipping file type " & sSubkey, LogTypeInfo
+
+			ElseIf Left(sSubkey, 1) = "." then
+
+				' Read the default value to see what app is associated with this extension
+
+				On Error Resume Next
+				sAppKey = oShell.RegRead("HKEY_CLASSES_ROOT\" & sSubkey & "\")
+				If Err or sAppKey = "" then
+					oLogging.CreateEntry "Unable to locate application associated with " & sSubkey & ", skipping", LogTypeInfo
+				Else
+
+					' See if the file can be opened (has a shell\open\command handler)
+
+					sCommand = oShell.RegRead("HKEY_CLASSES_ROOT\" & sAppKey & "\shell\open\command\")
+					If Err then
+						oLogging.CreateEntry "Application " & sAppKey & " does not have an open handler, skipping", LogTypeInfo
+					ElseIf Instr(UCase(sCommand), "\OFFICE") > 0 then
+						oLogging.CreateEntry "Skipping Office application " & sAppKey & "", LogTypeInfo
+					Else
+
+						' Add it to the XML file
+
+						oLogging.CreateEntry "Application " & sAppKey & " can be opened using " & sCommand & ", will add to XML file", LogTypeInfo
+						oFile.WriteLine "                        <script>MigXmlHelper.GenerateDrivePatterns (""* [*" & sSubKey & "]"", ""Fixed"")</" & "script>"
+
+					End if
+
+				End if
+				On Error Goto 0
+
+			End if
+
+		Next
+
+
+		' Write the rest of the XML file
+
+		oFile.WriteLine "                    </objectSet>"
+		oFile.WriteLine "                </include>"
+		oFile.WriteLine "                <exclude>"
+		oFile.WriteLine "                    <objectSet>"
+		oFile.WriteLine "                        <pattern type=""File"">%PROFILESFOLDER%\* [*]</pattern>"
+		oFile.WriteLine "                        <pattern type=""File"">%CSIDL_WINDOWS%\* [*]</pattern>"
+		oFile.WriteLine "                        <pattern type=""File"">%CSIDL_PROGRAM_FILES%\* [*]</pattern>"
+		oFile.WriteLine "                    </objectSet>"
+		oFile.WriteLine "                </exclude>"
+		oFile.WriteLine "            </rules>"
+		oFile.WriteLine "        </role>"
+		oFile.WriteLine "    </component>"
+
+		oFile.WriteLine "</migration>"
+
+		oFile.Close
+
+
+		' Make sure the ZTIUserState.wsf script knows to use this script
+
+		oLogging.CreateEntry "Adding ZTIAppXmlGen.xml to the list of USMT migration files.", LogTypeInfo
+		Set oMigXML = oEnvironment.ListItem("USMTMigFiles")
+		If oMigXML.Count = 0 then
+			oMigXML.Add "MigApp.xml", ""
+			If Left(oEnvironment.Item("ImageBuild"),3) < "6.0" or oEnvironment.Item("USMT3") = "YES" Then
+				oMigXML.Add "MigSys.xml", ""
+			End If
+			oMigXML.Add "MigUser.xml", ""
+		End if
+		oMigXML.Add "ZTIAppXmlGen.xml", ""
+		oEnvironment.ListItem("USMTMigFiles") = oMigXML
+
+
+		'Cleanup and Exit
+
+		Main = iRetVal
+
+	End Function
+
+
+End class
+
+
+	</script>
+</job>
+

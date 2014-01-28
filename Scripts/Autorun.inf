@@ -1,0 +1,5 @@
+[AutoRun]
+action=Windows Deployment Wizard
+open=wscript.exe Deploy\Scripts\BDD_AutoRun.wsf
+icon=Deploy\Scripts\Wizard.ico
+

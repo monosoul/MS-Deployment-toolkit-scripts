@@ -1,0 +1,431 @@
+<job id="ZTIConfigureDHCP">
+	<script language="VBScript" src="ZTIUtility.vbs" />
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIConfigureDHCP.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Configure the DHCP installed
+' // 
+' // Usage:     cscript ZTIConfigureDHCP.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIConfigureDHCP
+
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public iRetval
+	Public iErrorCount
+	Public arrCustomScopeDetails()
+		
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		Redim arrCustomScopeDetails(-1)
+
+	End Sub
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		' Local Variable declaration
+
+		Dim oService
+		Dim iResult
+		Dim sFile
+		Dim oLog
+		Dim i
+		Dim oCustomScopeDetails
+		Dim arrIP
+
+
+		' End of local variables declarations
+
+
+		'----------------------------------------------------------------------------
+		'  Make sure DHCP is running
+		'----------------------------------------------------------------------------
+
+		On Error Resume Next
+
+		'Delete the existing file if Present
+		If oFSO.FileExists(oLogging.LogPath & "\ZTIConfigureDHCP.txt") then
+			oLogging.CreateEntry "Delete Existing DHCP Configure File", LogTypeInfo
+			oFSO.DeleteFile oLogging.LogPath & "\ZTIConfigureDHCP.txt", true
+		End If
+
+
+		Set oService = objWMI.Get("Win32_Service.Name='DhcpServer'")
+		If Err then
+			oLogging.ReportFailure "Unable to configure DHCP Server because the service is not installed.", 7200
+		End If
+		On Error Goto 0
+
+		If not oService.Started then
+
+			' Make sure the service is set to auto
+
+			iResult = oService.ChangeStartMode("Automatic")
+			oLogging.CreateEntry "Changed start mode for DHCP Server service, rc = " & iResult, LogTypeInfo
+
+
+			' Now start it and give it a while to initialize
+
+			oService.StartService()
+			oLogging.CreateEntry "Started DHCP Server service, rc = " & iResult, LogTypeInfo
+			WScript.Sleep 5000
+
+		End If
+
+
+		'----------------------------------------------------------------------------
+		'  Initialize variables
+		'----------------------------------------------------------------------------
+
+		'Get the scope details
+
+		iRetval = GetScopeDetails()
+		If (iRetval <> 0) then
+			oLogging.ReportFailure "Unable to read the Scope Details - GetScopeDetails() failed", 7201
+		End If
+
+
+		iErrorCount = 0
+
+
+
+
+		'----------------------------------------------------------------------------
+		'  Write commands to set the scope and initiate logging
+		'----------------------------------------------------------------------------
+
+		AddCommand "set file open " & oLogging.LogPath & "\ZTIConfigureDHCP_netsh.log"
+		AddCommand "dhcp server"
+
+
+		'----------------------------------------------------------------------------
+		'  Write commands to configure DHCP server options
+		'----------------------------------------------------------------------------
+
+		' Make sure all needed option defs are present
+
+		AddCommand "Add Optiondef 3  ""Router"" IPADDRESS 1 comment=""Array of router addresses ordered by preference"" 0.0.0.0"
+		AddCommand "Add Optiondef 6  ""DNS Servers"" IPADDRESS 1 comment=""Array of router addresses ordered by preference"" 0.0.0.0"
+		AddCommand "Add Optiondef 15 ""DNS Domain Name"" STRING 0 comment=""DNS Domain name for client resolutions"" """""
+		AddCommand "Add Optiondef 44 ""WINS/NBNS Servers"" IPADDRESS 1 comment=""NBNS Address(es) in priority order"" 0.0.0.0"
+		AddCommand "Add Optiondef 46 ""WINS/NBT Node Type"" BYTE 0 comment=""0x1 = B-node, 0x2 = P-node, 0x4 = M-node, 0x8 = H-node"" 0"
+		AddCommand "Add Optiondef 51 ""Lease"" DWORD 0 comment=""Client IP address lease time in seconds"" 0"
+		AddCommand "Add Optiondef 60 ""PXEClient"" STRING 0 comment=""PXE Support"" ""PXEClient"""
+
+
+		' Configure the individual options
+
+		If (oEnvironment.Item("DHCPServerOptionRouter") <> "") then
+			arrIP = Split(oEnvironment.Item("DHCPServerOptionRouter"),",")
+			ConfigureIPaddressOption "", 3, arrIP
+		End If
+
+		If (oEnvironment.Item("DHCPServerOptionDNSServer") <> "") then
+			arrIP = Split(oEnvironment.Item("DHCPServerOptionDNSServer"),",")
+			ConfigureIPaddressOption "", 6, arrIP
+		End If
+
+		If (oEnvironment.Item("DHCPServerOptionWINSServer") <> "") then
+			arrIP = Split(oEnvironment.Item("DHCPServerOptionWINSServer"),",")
+			ConfigureIPaddressOption "", 44, arrIP
+		End If
+
+		If (oEnvironment.Item("DHCPServerOptionDNSDomainName") <> "") then
+			ConfigureStringOption "", 15, oEnvironment.Item("DHCPServerOptionDNSDomainName"), "String"
+		End If
+
+		If (oEnvironment.Item("DHCPServerOptionNBTNodeType") <> "") then
+			ConfigureStringOption "", 46, oEnvironment.Item("DHCPServerOptionNBTNodeType"), "Byte"
+		End If
+
+		If (oEnvironment.Item("DHCPServerOptionPXEClient") <> "") then
+			ConfigureStringOption "", 60, oEnvironment.Item("DHCPServerOptionPXEClient"), "String"
+		End If
+
+
+		'----------------------------------------------------------------------------
+		'  Configure DHCP scopes
+		'----------------------------------------------------------------------------
+
+		For each oCustomScopeDetails IN arrCustomScopeDetails
+
+			' Connect to DHCP and add the scopes with IPAddress
+			If oCustomScopeDetails.Description = "" Then
+				oCustomScopeDetails.Description = "NewScope"
+			End If
+
+			If (oCustomScopeDetails.SubnetMask <> "" AND oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.Name <> "" ) then
+				AddCommand "Add Scope " & oCustomScopeDetails.IP & " " & oCustomScopeDetails.SubnetMask & " """ & oCustomScopeDetails.Name & """" & " " & """" & oCustomScopeDetails.Description & """"
+			Else
+				oLogging.ReportFailure "Not enough values specified for scope creation.", 7202
+			End If
+
+
+			'Add IP address Start and end range of IP address For distribution
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.StartIP <> "" AND oCustomScopeDetails.EndIP <> "") then
+				AddCommand "Scope " & oCustomScopeDetails.IP & " Add IpRange " & oCustomScopeDetails.StartIP & " " & oCustomScopeDetails.EndIP
+			Else
+				oLogging.ReportFailure "Not enough values provided to Set the IP range For this scope.", 7203
+			End If
+
+
+			'Add the range of IP addresses that needs to get excluded
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.ExcludeStartIP <> "" AND oCustomScopeDetails.ExcludeEndIP <> "") then
+				AddCommand "Scope " & oCustomScopeDetails.IP & " Add excluderange " & oCustomScopeDetails.ExcludeStartIP & " " & oCustomScopeDetails.ExcludeEndIP
+			Else
+				oLogging.CreateEntry "No value specified For Scope exclusion range.", LogTypeInfo
+			End If
+
+
+			'Add the options to DHCP - Router
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionRouter <> "" ) then
+				arrIP = Split(oCustomScopeDetails.OptionRouter,",")
+				ConfigureIPaddressOption oCustomScopeDetails.IP, 3, arrIP
+			End If
+
+
+			'Add the options to DHCP - DNS IP Address
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionDNSServer <> "" ) then
+				arrIP = Split(oCustomScopeDetails.OptionDNSServer,",")
+				ConfigureIPaddressOption oCustomScopeDetails.IP, 6, arrIP
+			End If
+
+
+			'Add the options to DHCP - WINS IP Address
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionWINSServer <> "" ) then
+				arrIP = Split(oCustomScopeDetails.OptionWINSServer,",")
+				ConfigureIPaddressOption oCustomScopeDetails.IP, 44, arrIP
+			End If
+
+
+			'Add the options to DHCP - DNS Domain Name
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionDNSDomainName <> "" ) then
+				ConfigureStringOption oCustomScopeDetails.IP, 15, oCustomScopeDetails.OptionDNSDomainName, "String"
+			End If
+
+
+			'Add the options to DHCP - WINS/NBT Node type - 0x1 = B-node, 0x2 = P-node, 0x4 = M-node, 0x8 = H-node
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionNBTNodeType <> "" ) then
+				ConfigureStringOption oCustomScopeDetails.IP, 46, oCustomScopeDetails.OptionNBTNodeType, "BYTE"
+			End If
+
+
+			'Add the options to DHCP - DWORD type
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionLease <> "" ) then
+				ConfigureStringOption oCustomScopeDetails.IP, 51, oCustomScopeDetails.OptionLease, "DWORD"
+			End If
+
+
+			'Add the options to DHCP - PXEClient
+
+			If (oCustomScopeDetails.IP <> "" AND oCustomScopeDetails.OptionPXEClient <> "" ) then
+				ConfigureStringOption oCustomScopeDetails.IP, 60, oCustomScopeDetails.OptionPXEClient, "String"
+			End If
+
+
+			' Activate the scope
+
+			AddCommand "Scope " & oCustomScopeDetails.IP & " Set State 1"
+
+		Next
+
+
+		' Dump the results
+
+		AddCommand "Dump"
+
+
+		' Run the commands
+
+		iRetVal = RunAndLog("netsh.exe -f " & oLogging.LogPath & "\ZTIConfigureDHCP.txt")
+
+
+		' Check errors
+
+		If (iRetVal = 0) THEN
+			oLogging.CreateEntry "DHCP configuration successful", LogTypeInfo
+			Main = Success
+		Else
+			oLogging.CreateEntry "DHCP configuration returned RC = " & iRetVal & ", check the ZTIConfigureDHCP_netsh.log for errors", LogTypeError
+			Main = Failure
+		End If
+
+	End function
+
+
+	Sub AddCommand(sCmd)
+
+		Dim oCommands
+
+		oLogging.CreateEntry "Adding command: " & sCmd, LogTypeInfo
+		Set oCommands = oFSO.OpenTextFile(oLogging.LogPath & "\ZTIConfigureDHCP.txt", ForAppending, True)
+		oCommands.WriteLine sCmd
+		oCommands.Close
+
+	End Sub
+
+
+	Sub ConfigureIPaddressOption(IP, OptionValue, IPaddresses)
+		Dim addresses
+		Dim i
+
+
+		' Build a list with each IP surrounded by quotes, separated by spaces
+
+		addresses = ""
+		For i = 0 to UBound(IPaddresses)
+			addresses = addresses & """" & IPaddresses(i) & """ "
+		Next
+
+
+		' Build the command
+
+		If IP = "" then
+			AddCommand "Set OptionValue " & OptionValue & " IPADDRESS " & addresses
+		Else
+			AddCommand "Scope " & IP & " Set OptionValue " & OptionValue & " IPADDRESS " & addresses
+		End If
+
+	End Sub
+
+
+	Sub ConfigureStringOption(IP, OptionValue, StringValue, StringType)
+
+		If IP = "" then
+			AddCommand "Set OptionValue " & OptionValue & " " & StringType & " """ & StringValue & """"
+		Else
+			AddCommand "Scope " & IP & " Set OptionValue " & OptionValue & " " & StringType & " """ & StringValue & """"
+		End If
+
+	End Sub
+
+
+	Function GetScopeDetails
+
+		Dim oCustomScopeDetails
+		Dim i
+
+
+		For i = 0 to 255
+
+			If oEnvironment.Item("DHCPScopes" & i & "Name") = "" then
+				oLogging.CreateEntry "End of DHCPScopes list, " & i & " entries found.", LogTypeInfo
+				Exit For
+			End If
+
+			Set oCustomScopeDetails = New Customscopedetails
+			oCustomScopeDetails.Name = oEnvironment.Item("DHCPScopes" & i & "Name")
+			oCustomScopeDetails.IP = oEnvironment.Item("DHCPScopes" & i & "IP")
+			oCustomScopeDetails.SubnetMask = oEnvironment.Item("DHCPScopes" & i & "SubnetMask")
+			oCustomScopeDetails.StartIP = oEnvironment.Item("DHCPScopes" & i & "StartIP")
+			oCustomScopeDetails.EndIP = oEnvironment.Item("DHCPScopes" & i & "EndIP")
+			oCustomScopeDetails.ExcludeStartIP = oEnvironment.Item("DHCPScopes" & i & "ExcludeStartIP")
+			oCustomScopeDetails.ExcludeEndIP = oEnvironment.Item("DHCPScopes" & i & "ExcludeEndIP")
+			oCustomScopeDetails.OptionRouter = oEnvironment.Item("DHCPScopes" & i & "OptionRouter")
+			oCustomScopeDetails.OptionDNSServer = oEnvironment.Item("DHCPScopes" & i & "OptionDNSServer")
+			oCustomScopeDetails.OptionWINSServer = oEnvironment.Item("DHCPScopes" & i & "OptionWINSServer")
+			oCustomScopeDetails.OptionDNSDomainName = oEnvironment.Item("DHCPScopes" & i & "OptionDNSDomainName")
+			oCustomScopeDetails.OptionNBTNodeType = oEnvironment.Item("DHCPScopes" & i & "OptionNBTNodeType")
+			oCustomScopeDetails.OptionLease = oEnvironment.Item("DHCPScopes" & i & "OptionLease")
+			oCustomScopeDetails.OptionPXEClient = oEnvironment.Item("DHCPScopes" & i & "OptionPXEClient")
+			oCustomScopeDetails.Description = oEnvironment.Item("DHCPScopes" & i & "Description")
+			ReDim Preserve arrCustomScopeDetails(UBound(arrCustomScopeDetails) + 1)
+			Set arrCustomScopeDetails(UBound(arrCustomScopeDetails)) = oCustomScopeDetails
+
+		Next
+
+		GetScopeDetails = Success
+
+	End function
+
+
+	Function RunAndLog(sCmd)
+
+		Dim iRetVal
+
+		On Error Resume Next
+		oLogging.CreateEntry "About to run: " & sCmd, LogTypeInfo
+		iRetval = oShell.Run(sCmd, 0, false)
+		If Err then
+			iErrorCount = iErrorCount + 1
+			iRetVal = Err.Number
+			oLogging.CreateEntry "ERROR executing command: " & Err.Description & " (" & Err.Number & ")", LogTypeError
+		ElseIf (iRetval = 0) then
+			oLogging.CreateEntry "Command completed successfully, rc = 0", LogTypeInfo
+		Else
+			iErrorCount = iErrorCount + 1
+			oLogging.CreateEntry "Command was not successful, rc = " & iRetVal, LogTypeInfo
+		End If
+
+		RunAndLog = iRetVal
+
+	End function
+
+End class
+
+
+
+Class Customscopedetails
+	Dim Name
+	Dim IP
+	Dim SubnetMask
+	Dim StartIP
+	Dim EndIP
+	Dim ExcludeStartIP
+	Dim ExcludeEndIP
+	Dim OptionRouter
+	Dim OptionDNSServer
+	Dim OptionWINSServer
+	Dim OptionDNSDomainName
+	Dim OptionNBTNodeType
+	Dim OptionLease
+	Dim OptionPXEClient
+	Dim Description
+End Class
+
+	</script>
+</job>

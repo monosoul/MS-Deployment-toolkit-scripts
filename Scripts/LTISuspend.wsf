@@ -1,0 +1,140 @@
+<job id="LTISuspend">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDataAccess.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      LTISuspend.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Suspend a task sequence to allow manually steps to be performed.
+' //            Note that this is only supported while in the full OS.
+' // 
+' // Usage:     cscript.exe [//nologo] LTISuspend.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class LTISuspend
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim sDest
+		Dim sCmd 
+		Dim oLink
+
+
+		If oUtility.Arguments.Exists("resume") then
+
+			' Clear the LTISuspend variable
+
+			oEnvironment.Item("LTISuspend") = ""
+
+
+			' Clean up the shortcut to me on the desktop
+
+			oFSO.DeleteFile oShell.SpecialFolders("AllUsersDesktop") & "\Resume Task Sequence.lnk"
+
+
+			' Run LiteTouch.wsf with /start switch to recreate the shortcut.
+			' On Server Core, this will actually run LiteTouch.wsf normally.
+
+			If (not oFSO.FileExists(oEnv("SystemRoot") & "\Explorer.exe")) or UCase(oEnvironment.Item("HideShell")) = "YES" then
+
+				' On Server Core or hiding the shell, so just run LiteTouch.wsf and quit.  It will do the rest.
+
+				sCmd = "wscript.exe " & oUtility.LocalRootPath & "\Scripts\LiteTouch.wsf /start"
+				oShell.Run sCmd, 0, False
+
+			Else
+
+				' Not on Server Core, so run LiteTouch.wsf once (synchronously) to create the 
+				' startup group item and then again (async) to actually run the script.
+
+				sCmd = "wscript.exe " & oUtility.LocalRootPath & "\Scripts\LiteTouch.wsf /start"
+				oShell.Run sCmd, 0, True
+
+				sCmd = "wscript.exe " & oUtility.LocalRootPath & "\Scripts\LiteTouch.wsf"
+				oShell.Run sCmd, 0, False
+
+			End if				
+
+		Else
+		
+			' Set variables to indicate that we want to "reboot".  Also set a flag
+			' so that LiteTouch.wsf doesn't actually do the reboot.
+
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("LTISuspend") = "true"
+
+
+			' Remove the LiteTouch.wsf shortcut from the startup menu
+
+			If oFSO.FileExists(oShell.SpecialFolders("AllUsersStartup") & "\LiteTouch.lnk") then
+				oLogging.CreateEntry "Removing " & oShell.SpecialFolders("AllUsersStartup") & "\LiteTouch.lnk", LogTypeInfo
+				oFSO.DeleteFile oShell.SpecialFolders("AllUsersStartup") & "\LiteTouch.lnk"
+			End if
+
+
+			' Make sure the scripts are local
+
+			If not oFSO.FileExists(oUtility.LocalRootPath & "\Scripts\LiteTouch.wsf") then
+
+				' Run LTICopyScripts.wsf to copy the needed scripts locally
+				oShell.Run "wscript.exe """ & oUtility.ScriptDir & "\LTICopyScripts.wsf""", 0, true
+
+			End if
+			
+
+			' Copy me locally
+
+			If not oFSO.FileExists(oUtility.LocalRootPath & "\Scripts\" & WScript.ScriptName) then
+				oLogging.CreateEntry "Copying " & WScript.ScriptFullName & " to " & oUtility.LocalRootPath & "\Scripts\" & WScript.ScriptName, LogTypeInfo
+				oFSO.CopyFile WScript.ScriptFullName, oUtility.LocalRootPath & "\Scripts\" & WScript.ScriptName, True
+			End if
+
+
+			' Make a desktop shortcut to run me.
+
+			oLogging.CreateEntry "Creating startup folder item to run LiteTouch.wsf once the shell is loaded.", LogTypeInfo
+
+			Set oLink = oShell.CreateShortcut(oShell.SpecialFolders("AllUsersDesktop") & "\Resume Task Sequence.lnk")
+			oLink.TargetPath = "wscript.exe"
+			oLink.Arguments = """" & oUtility.LocalRootPath & "\Scripts\" & WScript.ScriptName & """ /resume"
+			oLink.Save
+
+			oLogging.CreateEntry "Shortcut """ & oShell.SpecialFolders("AllUsersDesktop") & "\Resume Task Sequence.lnk"" created.", LogTypeInfo
+
+		End if
+	
+	End Function
+
+End class
+
+	</script>
+</job>

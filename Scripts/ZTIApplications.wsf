@@ -1,0 +1,523 @@
+<job id="ZTIApplications">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIConfigFile.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIApplications.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install a list of applications
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIApplications.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIApplications
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim oApplications
+	Dim oInstalledApplications
+	' Dim oXMLDoc
+	Dim oXMLApps
+	Dim dAvaiableApps
+	Dim sBDDRun
+	Dim aLanguages
+	Dim oDependentApplications
+	
+	Dim g_ApplicationSuccessCodes
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		g_ApplicationSuccessCodes = " 0 3010 "
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim iRetVal, sGuid, sCmd, bValidProcessorType
+		Dim iApplicationCount, iPercent
+		Dim sApplicationType
+
+		iRetVal = Success
+
+		' Validate that are not restarting from a failed install.
+
+		If ucase(oEnv("SystemDrive")) = "X:" Then
+			oLogging.CreateEntry "Environment Error: ManualRetry (From ZTIApplications).", LogTypeInfo
+
+			oEnvironment.Item("LTISuspend") = "LiteTouch is trying to install applications." & _
+				vbNewLine & "This cannot be performed in Windows PE." & _
+				vbNewLine & "If booting from a USB Flash Disk, please remove all drives before restarting." & _
+				vbNewLine & "Otherwise, ensure the hard disk is selected first in the BIOS boot order."
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			Main = SUCCESS
+			Exit Function
+		End if
+
+
+		' Prepare the Deployment Root Directory
+
+		If oEnvironment.Item("ResourceRoot") = "" then
+			oEnvironment.Item("ResourceRoot") = oFSO.GetParentFolderName(oUtility.ScriptDir)
+		End if
+
+
+		' Load the XML File
+		set oXMLApps = new ConfigFile
+		oXMLApps.sFileType = "Applications"
+		set dAvaiableApps = oXMLApps.FindAllItems
+
+		' Find our stub program
+
+		iRetVal = oUtility.FindFile("bddrun.exe", sBDDRun)
+		TestAndLog iRetVal, "Find File: BDDRun.exe"
+
+
+		if isempty(aLanguages) then
+			aLanguages = array( cstr(GetLocale), right("0000" & hex(GetLocale),4), "0x" & right("0000" & hex(GetLocale),4), _
+					cstr(GetLocale() and &h03ff), right("0000" & hex(GetLocale() and &h03ff),4), "0x" & right("0000" & hex(GetLocale() and &h03ff),4)  )
+		end if
+		oLogging.CreateEntry "Language/Locale Identified (in order of precedence): " & join(aLanguages,","), LogTypeInfo
+
+
+		' Load the list of already-installed applications (probably doesn't exist yet)
+
+		Set oInstalledApplications = oEnvironment.ListItem("InstalledApplications")
+
+		Set oDependentApplications = oEnvironment.ListItem("DependentApplications")
+
+
+		' Check that an individual application guid wasn't passed via the commmand line.
+		' This is a mandatory single install intiate by a Task Sequence action.
+        
+		If oEnvironment.Item("ApplicationSuccessCodes") <> "" then
+		g_ApplicationSuccessCodes = " " & oEnvironment.Item("ApplicationSuccessCodes") & " "
+		End if
+		
+		If oEnvironment.Item("ApplicationGUID") <> "" Then
+			oLogging.CreateEntry "Mandatory Single Application install indicated. Guid: " & oEnvironment.Item("ApplicationGUID"), LogTypeInfo
+
+			iRetVal = InstallApplication(oEnvironment.Item("ApplicationGUID"), 0)
+
+			If iRetVal = 3010 then  ' Reboot requested
+
+				' Set properties to indicate a reboot is needed and this script should be re-executed
+
+				oEnvironment.Item("SMSTSRebootRequested") = "true"
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+
+				oLogging.CreateEntry "Exiting to initiate a reboot with retry (to pick up where we left off)", LogTypeInfo
+				Main = Success
+
+				Exit Function
+
+			End if
+
+			Main = 0   ' Always succeed.  The errors and warnings from above will be reported so the process can continue.
+			Exit Function
+		End If
+		
+		' Load the list of Applications stored in the enviroment. First we being by processing the MandatoryApplication
+		' and then follow with the normal user selected Applications.
+
+		For Each sApplicationType in Array("MandatoryApplications", "Applications")
+			oLogging.CreateEntry "Processing Application Type: " & sApplicationType, LogTypeInfo
+
+			Set oApplications = oEnvironment.ListItem(sApplicationType)
+
+			If oApplications.Count = 0 then
+				oLogging.CreateEntry "Application List is empty, exiting ZTIApplications.wsf", LogTypeInfo
+				Main = Success
+			Else
+
+				' Process the list
+
+				oLogging.CreateEntry "Ready to install applications: " , LogTypeInfo
+				iApplicationCount = 0
+				For each sGuid in oApplications
+
+					iApplicationCount = iApplicationCount + 1
+					iPercent = CLng(iApplicationCount / oApplications.Count * 100)
+					iRetVal = InstallApplication(sGuid, iPercent)
+
+					If iRetVal = 3010 then  ' Reboot requested
+
+						' Set properties to indicate a reboot is needed and this script should be re-executed
+
+						oEnvironment.Item("SMSTSRebootRequested") = "true"
+						oEnvironment.Item("SMSTSRetryRequested") = "true"
+
+						oLogging.CreateEntry "Exiting to initiate a reboot with retry (to pick up where we left off)", LogTypeInfo
+						iRetVal = Success
+
+						Exit Function
+
+					End if
+
+				Next
+
+			End if
+
+		Next
+
+
+		'Cleanup and Exit
+
+		Main = iRetVal
+
+	End Function
+	
+	
+		
+
+	Function InstallApplication(sGuid, iPercent)
+
+		Dim oNode
+		Dim oDependentNode
+		Dim sDependentGuid
+		Dim sDir
+		Dim sCmd
+		Dim bValidProcessorType
+		Dim iResult
+		Dim sError
+		Dim sKey
+		Dim sValueName
+		Dim sValue
+		Dim oSupportedPlatformNode
+		Dim sSupportedPlatform
+		Dim bSupportedPlaformRequired
+		Dim bSupportedPlatformFound
+		Dim bModern
+
+
+		InstallApplication = Success
+		bSupportedPlaformRequired = False
+
+
+		' Check if application has already been installed
+
+		If oInstalledApplications.Exists(sGuid) then
+			oLogging.CreateEntry "Application " & sGuid & " has already been installed, will not install again.", LogTypeInfo
+			Exit Function
+		End if
+
+
+		' Find the entry in the XML document
+
+		If not dAvaiableApps.Exists(sGuid) then
+			oLogging.CreateEntry "ERROR, application GUID " & sGuid & " not found in application list, unable to execute", LogTypeError
+			Exit Function
+		Else
+			set oNode = dAvaiableApps.Item(sGuid)
+		End if
+
+
+		' Log details of the application
+
+		oLogging.CreateEntry "################", LogTypeInfo
+		oLogging.CreateEntry "Entry: " & sGuid, LogTypeInfo
+		oLogging.CreateEntry "Name:  " & oUtility.SelectSingleNodeString(oNode,"Name"), LogTypeInfo
+		oLogging.CreateEntry "################", LogTypeInfo
+
+
+
+		' Use supported platform options to confirm application is applicable.
+
+		For each oSupportedPlatformNode in oNode.SelectNodes("SupportedPlatform")
+			sSupportedPlatform = oSupportedPlatformNode.Text
+			bSupportedPlaformRequired = True
+			bSupportedPlatformFound = False
+
+			oLogging.CreateEntry "################", LogTypeInfo
+			oLogging.CreateEntry vbTab & "Supported Platform entry: " & sSupportedPlatform, LogTypeInfo
+			oLogging.CreateEntry "################", LogTypeInfo
+
+
+			bSupportedPlatformFound = oUtility.IsSupportedPlatform(sSupportedPlatform)
+
+			If bSupportedPlatformFound = true Then
+				oLogging.CreateEntry vbTab & "Supported Platform Matched: " & sSupportedPlatform, LogTypeInfo
+				Exit For
+			End If
+		Next
+
+		If bSupportedPlaformRequired = True Then
+			If bSupportedPlatformFound <> True Then
+				oLogging.CreateEntry "Supported Plaform requirements not met, skipping this application", LogTypeInfo
+				Exit Function
+			End If
+		End If
+
+
+		' Make sure this should run for this Language Locale. If not, abort.
+
+		bValidProcessorType = TRUE
+		If not oNode.selectSingleNode("Language") is nothing then
+			sValueName = ucase(oUtility.SelectSingleNodeString(oNode,"Language"))
+			If sValueName <> "" then
+
+				' Removing logic because there is nothing in the documentation that indicates what valid values are nor are there
+				' any validations performed.  Users have typically used this as more of a comment field, so this would be a breaking
+				' change.
+				'  bValidProcessorType = FALSE
+
+				for each sValue in aLanguages
+					if ucase(sValue) = sValueName then
+						bValidProcessorType = TRUE
+						exit for
+					end if
+				next
+			End if
+		End if
+
+		If not bValidProcessorType then
+			oLogging.CreateEntry vbTab & vbTab & "Incorrect Language Type: " & oUtility.SelectSingleNodeString(oNode,"Language") & " = " &  GetLocale(), LogTypeInfo
+			Exit Function
+		End if
+
+
+		' See if the uninstall registry key already exists, indicating that the app is installed
+
+		If not oNode.selectSingleNode("UninstallKey") is Nothing then
+			sKey = oUtility.SelectSingleNodeString(oNode,"UninstallKey")
+			If oUtility.SelectSingleNodeString(oNode,"UninstallKey") <> "" then
+
+				' Check if the registry key exists
+
+				For each sValueName in Array("DisplayName", "UninstallString", "QuietUninstallString")
+
+					sValue = empty
+					on error resume next
+						sValue = oShell.RegRead("HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\" & sKey & "\" & sValueName)
+					on error goto 0
+
+					If IsEmpty(sValue) then
+						On error resume next
+							sValue = oShell.RegRead("HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\" & sKey & "\" & sValueName)
+						On error goto 0
+					End if
+
+					If not isempty(sValue) then
+						oLogging.CreateEntry "Uninstall registry key found, application is already installed.", LogTypeInfo
+						Exit Function
+					End if
+
+				Next
+
+			End if
+		End if
+
+
+		' Process any dependent programs
+
+
+		For each oDependentNode in oNode.SelectNodes("Dependency")
+
+			sDependentGuid = oDependentNode.Text
+			If oDependentApplications.Exists(sDependentGuid) then
+				oLogging.CreateEntry "Dependent Application has already been referenced, skipping application", LogTypeInfo
+			Else	
+				oDependentApplications.Add sDependentGuid, ""
+				oLogging.CreateEntry "################", LogTypeInfo
+				oLogging.CreateEntry vbTab & "Dependent entry: " & sDependentGuid, LogTypeInfo
+				oLogging.CreateEntry "################", LogTypeInfo
+				
+				iResult = InstallApplication(sDependentGuid, iPercent)
+
+				If iResult = 3010 then  ' Reboot requested
+
+					oLogging.CreateEntry "Dependent application requested a reboot", LogTypeInfo
+	
+					InstallApplication = 3010
+					Exit Function
+
+				End if
+			End If
+		Next
+
+		' Check if application has already been installed.  Could have been installed by a dependent application
+
+		If oInstalledApplications.Exists(sGuid) then
+			oLogging.CreateEntry "Application " & sGuid & " has already been installed, will not install again.", LogTypeInfo
+			Exit Function
+		End if
+
+
+
+		' Install the specified application
+
+		bModern = False
+		If oNode.selectSingleNode("CommandLine") is Nothing then
+			sCmd = ""
+		ElseIf oUtility.SelectSingleNodeString(oNode,"CommandLine") <> "" then
+			If UCase(Right(oUtility.SelectSingleNodeString(oNode,"CommandLine"),5)) = ".APPX" then
+				bModern = True
+				CheckAppXPolicy
+				sCmd = "DISM.EXE /online /Add-ProvisionedAppxPackage /PackagePath:""" & oUtility.SelectSingleNodeString(oNode,"CommandLine") & """ /SkipLicense"
+			Else 
+				sCmd = sBDDRun & " " & oEnvironment.Substitute(oUtility.SelectSingleNodeString(oNode,"CommandLine"))
+			End if
+		End if
+
+
+		' Change to the current directory
+
+		If not oNode.selectSingleNode("WorkingDirectory") is nothing then
+
+			sDir = oUtility.SelectSingleNodeString(oNode,"WorkingDirectory")
+			If Trim(sDir) <> "" and Trim(sDir) <> "." then
+
+
+				If Left(sDir, 2) = ".\" then
+					If (Instr(1, sCmd, ".CMD", 1) > 0 or Instr(1, sCmd, ".BAT", 1) > 0) and oEnvironment.Item("ResourceDrive") <> "" then
+						If oEnvironment.Item("DeploymentMethod") = "MEDIA" then
+							sDir = oEnvironment.Item("ResourceRoot") & Mid(sDir, 2)
+						Else
+							sDir = oEnvironment.Item("ResourceDrive") & Mid(sDir, 2)
+						End If
+					Else
+						sDir = oEnvironment.Item("ResourceRoot") & Mid(sDir, 2)
+					End if
+				End if
+
+				sDir = oEnvironment.Substitute(sDir)
+
+				oUtility.ValidateConnection sDir
+
+				oLogging.CreateEntry vbTab & vbTab & "Change directory: " & sDir, LogTypeInfo
+				On Error Resume Next
+
+				oShell.CurrentDirectory = sDir
+
+				If Err then
+					oLogging.CreateEntry "WARNING - unable to set working directory: " & Err.Description & " (" & Err.Number & ")", LogTypeWarning
+				End if
+				On Error Goto 0
+
+
+				' If installing a modern app, make sure the certs in the working directory are imported
+
+				If bModern then
+					InstallCerts sDir
+				End if
+
+			End if
+		End if
+
+
+		' Launch Command
+
+		If sCmd = "" then
+			oLogging.CreateEntry vbTab & vbTab & "Run Command is missing. ", LogTypeInfo
+		Else
+			oLogging.ReportProgress "Installing " & oUtility.SelectSingleNodeString(oNode,"Name"), iPercent
+			oLogging.CreateEntry vbTab & vbTab & "Run Command: " & sCmd, LogTypeInfo
+			oLogging.CreateEvent 41031, LogTypeInfo, "ZTI installing application ", Array(sGuid, oUtility.SelectSingleNodeString(oNode,"Name"))
+
+			On Error Resume Next
+
+
+			If bModern then
+				iResult = oShell.Run(sCmd, 0, true)
+			Else
+				iResult = oUtility.RunWithHeartbeat(sCmd)
+			End if
+
+			If Err then
+				iResult = Err.number
+				sError = Err.Description
+				oLogging.CreateEvent 41032, LogTypeError, "Error installing application " & oUtility.SelectSingleNodeString(oNode,"Name") & ": " & sError, Array(sGuid, oUtility.SelectSingleNodeString(oNode,"Name"), sError)
+			ElseIf instr(1,g_ApplicationSuccessCodes," " & iResult & " ",vbTextCompare ) <> 0 then
+				oLogging.CreateEvent 41033, LogTypeInfo, "Application " & oUtility.SelectSingleNodeString(oNode,"Name") & " installed successfully", Array(sGuid, oUtility.SelectSingleNodeString(oNode,"Name"), iResult)
+				If iResult <> 3010 then
+					' Normalize the results to either 3010 or 0 if successfull.
+					iResult = 0
+				End if
+			Else
+				oLogging.CreateEvent 41034, LogTypeError, "Application " & oUtility.SelectSingleNodeString(oNode,"Name") & " returned an unexpected return code: " & iResult, Array(sGuid, oUtility.SelectSingleNodeString(oNode,"Name"), iResult)
+			End if
+
+			On Error Goto 0
+
+		End if
+
+		' Update the list of installed applications
+
+		oInstalledApplications.Add sGuid, ""
+		Set oEnvironment.ListItem("InstalledApplications") = oInstalledApplications
+
+		'See if a reboot is needed
+
+		If not oNode.selectSingleNode("Reboot") is Nothing then
+
+			If UCase(oUtility.SelectSingleNodeString(oNode,"Reboot")) = "TRUE" then
+
+				oLogging.CreateEntry "Application " & oUtility.SelectSingleNodeString(oNode,"Name") & " needs a reboot, initiating.", LogTypeInfo
+				InstallApplication = 3010  ' Reboot indicator
+				Exit Function
+
+			End if
+
+		End if
+
+
+
+	End Function
+	
+
+	Function CheckAppXPolicy
+		oShell.RegWrite "HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\Appx\AllowAllTrustedApps", 1, "REG_DWORD"
+	End function
+
+
+	Function InstallCerts(sDir)
+		Dim iRC
+		Dim oFile
+		Dim sCmd
+
+		For each oFile in oFSO.GetFolder(sDir).Files
+			If UCase(Right(oFile.Name,4)) = ".CER" then
+
+				sCmd = "certutil.exe -addstore root """ & oFile.Path & """"
+				oLogging.CreateEntry "Importing certificate: " & sCmd, LogTypeInfo
+				iRC = oShell.Run(sCmd, 0, true)
+				oLogging.CreateEntry "Return code from CERTUTIL = " & iRC, LogTypeInfo
+				
+			End if
+		Next
+
+	End function
+
+End class
+
+	</script>
+</job>
+

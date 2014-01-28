@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      BDD_Welcome_ENU.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   BDD Welcome Wizard
+' // 
+' // ***************************************************************************
+
+-->
+<Wizard>
+	<Global>
+		<HideNavigation>true</HideNavigation>
+	</Global>
+
+	<Pane id="Bootstrap" title="Processing Bootstrap Settings" reference="WelcomeWiz_Initialize.xml">
+	</Pane>
+
+	<Pane id="Choice" reference="WelcomeWiz_Choice.xml">
+		<Condition><![CDATA[ oEnv("SystemDrive") = "X:" and UCase(oEnvironment.Item("SkipBDDWelcome")) <> "YES" ]]></Condition>
+	</Pane>
+
+	<Pane id="DeployRoot" title="Deployment Share" reference="WelcomeWiz_DeployRoot.xml">
+		<Condition><![CDATA[ UCase(Left(oEnvironment.Item("DeployRoot"),3)) = "X:\" or oEnvironment.Item("DeployRoot") = "" or UCase(oEnvironment.Item("ChooseDeployRoot")) = "YES" ]]></Condition>
+	</Pane>
+
+</Wizard>

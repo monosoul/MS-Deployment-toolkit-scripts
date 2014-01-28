@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   5.1.1642.01
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_BitLocker.vbs</CustomScript>
+	</Global>
+
+	<Pane id="BitLocker">
+		<Body>
+  <![CDATA[
+
+	<H1>Specify the BitLocker configuration.</H1>
+
+	BitLocker can be enabled to provide an additional level of data security for this computer.<br>&nbsp;
+
+	<table>
+
+	<tr valign=top>
+		<td>
+			<input type=radio name="BdeGroup" id="BDERadio1" checked language=vbscript onclick=ValidateBDE  AccessKey=A >
+		</td>
+		<td>
+			<Label class="Larger" for=BDERadio1 language=vbscript ><u class=larger>D</u>o not enable BitLocker for this computer.</Label>
+			<br>&nbsp;
+		</td>
+	</tr>
+
+	<tr>
+		<td>
+			<input type=radio name="BdeGroup" id="BDERadio2" language=vbscript onclick=ValidateBDE  AccessKey=T >
+		</td>
+		<td>
+			<Label class="Larger" for=BDERadio2 language=vbscript >Enable BitLocker.</Label>
+		</td>
+	</tr>
+
+	<tr>
+		<td></td>
+		<td>
+			<table>
+			<tr>
+				<td>
+					<input type=radio name="BdeMode" id="BdeModeRadio1" checked language=vbscript onclick=ValidateBDE  AccessKey=M >
+				</td>
+				<td>
+					<Label language=vbscript for="BdeModeRadio1" >Enable BitLocker using TP<u>M</u> only.</Label>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<input type=radio name="BdeMode" id="BdeModeRadio4" language=vbscript onclick=ValidateBDE  AccessKey=P >
+				</td>
+				<td>
+					<Label for=BdeModeRadio4 language=vbscript >Enable BitLocker using TPM and Pin.</Label>
+				</td>
+				<td>
+
+				<input type=text size=20 maxlength=20 name="BdePin" id="BdePin" language=vbscript onpropertychange=ValidateBDE  AccessKey=P >
+					<label class=ErrMsg for=BdeModeRadio4></label></div>
+					<div><label class=ErrMsg id="InvalidKey"></label></div>
+
+				</td>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<input type=radio name="BdeMode" id="BdeModeRadio2" language=vbscript onclick=ValidateBDE  AccessKey=S >
+				</td>
+				<td>
+					<Label language=vbscript for=BdeModeRadio2>Enable BitLocker using TPM and a <u>s</u>tartup key.</Label>
+				</td>
+				<td>
+					<select name="BdeModeSelect1" onblur=ValidateBDE>
+						<option>First Available</option>
+						<option value="A:">A:</option>
+						<option value="B:">B:</option>
+						<option value="C:">C:</option>
+						<option value="D:">D:</option>
+						<option value="E:">E:</option>
+						<option value="F:">F:</option>
+						<option value="G:">G:</option>
+						<option value="H:">H:</option>
+						<option value="I:">I:</option>
+						<option value="J:">J:</option>
+						<option value="K:">K:</option>
+						<option value="L:">L:</option>
+						<option value="M:">M:</option>
+						<option value="N:">N:</option>
+						<option value="O:">O:</option>
+						<option value="P:">P:</option>
+						<option value="Q:">Q:</option>
+						<option value="R:">R:</option>
+						<option value="S:">S:</option>
+						<option value="T:">T:</option>
+						<option value="U:">U:</option>
+						<option value="V:">V:</option>
+						<option value="W:">W:</option>
+						<option value="X:">X:</option>
+						<option value="Y:">Y:</option>
+						<option value="Z:">Z:</option>
+					</select>
+				</td>
+
+			</tr>
+
+			<tr>
+				<td>
+					<input type=radio name="BdeMode" id="BdeModeRadio3" language=vbscript onclick=ValidateBDE  AccessKey=P >
+				</td>
+				<td>
+					<Label for=BdeModeRadio3 language=vbscript >Enable BitLocker using only an External Startup Key.</Label>
+				</td>
+				<td>
+					<select name="BdeModeSelect2" onblur=ValidateBDE>
+						<option>First Available</option>
+						<option value="A:">A:</option>
+						<option value="B:">B:</option>
+						<option value="C:">C:</option>
+						<option value="D:">D:</option>
+						<option value="E:">E:</option>
+						<option value="F:">F:</option>
+						<option value="G:">G:</option>
+						<option value="H:">H:</option>
+						<option value="I:">I:</option>
+						<option value="J:">J:</option>
+						<option value="K:">K:</option>
+						<option value="L:">L:</option>
+						<option value="M:">M:</option>
+						<option value="N:">N:</option>
+						<option value="O:">O:</option>
+						<option value="P:">P:</option>
+						<option value="Q:">Q:</option>
+						<option value="R:">R:</option>
+						<option value="S:">S:</option>
+						<option value="T:">T:</option>
+						<option value="U:">U:</option>
+						<option value="V:">V:</option>
+						<option value="W:">W:</option>
+						<option value="X:">X:</option>
+						<option value="Y:">Y:</option>
+						<option value="Z:">Z:</option>
+					</select>
+				</td>
+				</td>
+			</tr>
+			</table>
+
+		</td>
+	</tr>
+
+	<!--tr><td>&nbsp;</td></tr -->
+
+	<tr>
+		<td>&nbsp;</td>
+		<td>
+			<Label language=vbscript >Choose where to store the Recovery Key.</Label>
+		</td>
+	</tr>
+	<tr>
+		<td>&nbsp;</td>
+		<td>
+			<input type=radio name="AD" id="ADButton1" language=vbscript onclick=ValidateBDE  AccessKey=M > <label for="ADButton1">In Active Directory</label>
+		</td>
+	</tr>
+		<tr>
+		<td>&nbsp;</td>
+		<td>
+			<input type=radio name="AD" id="ADButton2" checked language=vbscript onclick=ValidateBDE  AccessKey=M > <label for="ADButton2">Do not create a recovery key. (Not recommended)</label>
+		</td>
+	</tr>
+
+	<!--tr><td>&nbsp;</td></tr -->
+
+		<tr>
+		<td>&nbsp;</td>
+		<td></br>
+			<input type=checkbox name="WaitForEncryption" id=waitfore language=vbscript onclick=ValidateBDE  AccessKey=M > <label for="waitfore">Wait for Bitlocker Encryption to complete on all drives before continuing.</label>
+		</td>
+	</tr>
+
+
+	</table>
+
+	<input type=hidden id="BdeInstall" name="BdeInstall">
+	<input type=hidden id="OSDBitLockerStartupKeyDrive" name="OSDBitLockerStartupKeyDrive">
+	<input type=hidden id="OSDBitLockerWaitForEncryption" name="OSDBitLockerWaitForEncryption">
+	<input type=hidden id="BdeRecoveryKey" name="BdeRecoveryKey">
+	<input type=hidden id="BdeInstallSuppress" name="BdeInstallSuppress">
+
+
+			]]>
+		</Body>
+		<Initialization><![CDATA[InitializeBDE]]></Initialization>
+		<Initialization><![CDATA[ValidateBDE]]></Initialization>
+		<Validation><![CDATA[ValidateBDE]]></Validation>
+		<Validation><![CDATA[ValidateKey]]></Validation>
+	</Pane>
+</Wizard>

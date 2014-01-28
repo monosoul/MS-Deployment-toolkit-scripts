@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_Ready.vbs</CustomScript>
+	</Global>
+
+	<Pane id="Ready">
+		<ButtonNext>
+			<Label><![CDATA[<button accesskey=G id=buttonNext language=vbscript onclick=ButtonNextClick>Be<U>g</U>in</button>]]></Label>
+		</ButtonNext>
+		<Body>
+	<![CDATA[
+		<H1>Ready to begin.</H1>
+		<p>Using the information you provided, the deployment can now begin.</p>
+
+		<p>
+		 <input id=MoreInfo src=plusicon.gif type=image onclick="javascript:HideUnHideCmdWindow(optionalWindow1);" />
+		 <label onclick="javascript:MoreInfo.click();" >Details ...</label></br>
+		 <span id=optionalWindow1 style="display=none;" class=LightColoredBox>Details Here!</span>
+		</p>
+
+	]]>
+		</Body>
+		<Initialization><![CDATA[PrepareFinalScreen]]></Initialization>
+	</Pane>
+
+</Wizard>

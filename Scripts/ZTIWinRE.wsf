@@ -1,0 +1,172 @@
+<job id="ZTIWinRE">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIWinRE.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install WinRE or DART on local machine for recovery scenarios.
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIWinRE.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIWinRE
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim sArchitecture
+	Dim sTargetOS
+	Dim sTargetOSDrive
+	Dim sBootKey
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		sArchitecture= oEnvironment.Item("ImageProcessor")
+		If sArchitecture = "" then
+			sArchitecture = oEnvironment.Item("Architecture")
+			oLogging.CreateEntry "ImageProcessor not set, will boot into Windows PE architecture " & sArchitecture, LogTypeInfo
+		Else
+			oLogging.CreateEntry "Will boot into Windows PE architecture " & sArchitecture & " to match OS being deployed.", LogTypeInfo
+		End if
+
+		If oEnvironment.Item("WinREBootKey") <> "" then
+			sBootKey = " /bootkey " & oEnvironment.Item("WinREBootKey")
+		End if
+
+		sTargetOSDrive = "C:"
+		If oEnv("SystemDrive") = "X:" then
+			sTargetOSDrive = oUtility.GetOSTargetDriveLetterEx(false)
+			sTargetOS = " /target " & sTargetOSDrive & "\Windows"
+		End if
+
+	End sub
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim sFoundPath
+		Dim sTargetPath
+		Dim oDiskPart
+		Dim bUnMapDrive
+		Dim iRC
+		Dim sREAgentC
+
+
+		If UCase(oEnvironment.Item("PrepareWinRE")) <> "YES" then
+			oLogging.CreateEntry "WinRE is not enabled, Skip.", LogTypeInfo
+			Main = SUCCESS
+			Exit function
+		ElseIf Left(oEnvironment.Item("ImageBuild"),3) < "6.1" then
+			oLogging.CreateEntry "WinRE is not supported on Vista or Older. Skip.", LogTypeInfo
+			Main = SUCCESS
+			Exit function
+		ElseIf Left(oEnvironment.Item("ImageBuild"),3) = "6.1" and Left(oEnvironment.Item("OSCurrentVersion"),3) > "6.1" then
+			oLogging.CreateEntry "WinRE cannot be enabled for Windows 7 when using Windows PE from ADK due to compatibility issue with ReAgentC.exe, skipping.", LogTypeInfo
+			Main = SUCCESS
+			Exit function			
+		End if
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+
+		' ----------------------------------------------
+		oLogging.CreateEntry "Ensure boot drive has a Drive Letter.", LogTypeInfo
+
+		bUnMapDrive = false
+		set oDiskPart = GetBootDriveEx ( false, "", true )
+		If oDiskPart is Nothing then
+
+			bUnMapDrive = true
+			oLogging.CreateEntry "The drive letter for the boot partition was not found.", LogTypeInfo
+			set oDiskPart = GetBootDriveEx ( true, "", true )
+
+			TestAndFail not oDiskPart is nothing, 10501, "Verify a boot drive object was returned."
+			oLogging.CreateEntry "Found Object: " & oDiskPart.oWMIDiskPart.Path_, LogTypeInfo
+		End if
+
+		TestAndFail oDiskPart.Drive <> "", 10502, "Verify a drive was returned: " & oDiskPart.Drive
+
+
+		' ----------------------------------------------
+
+		sTargetPath = left(oDiskPart.Drive,2) & "\Recovery\WindowsRE\WinRE.wim"
+		oLogging.CreateEntry "Target file: " & sTargetPath, LogTypeInfo
+
+		' Force BCDBootDrive
+		oUtility.VerifyPathExists oFSO.GetParentFolderName(sTargetPath)
+
+		iRC = oUtility.FindFile("WinRE.wim", sFoundPath)
+		If iRC <> SUCCESS then
+			sFoundPath = oEnvironment.Item("DeployRoot") & "\Boot\LiteTouchPE_" & sArchitecture & ".wim"
+		End if
+
+		TestAndFail  oFSO.FileExists( sFoundPath ), 10503, "Verify File: " & sFoundPath 
+
+		If  oFSO.FileExists( sTargetPath ) then
+			oUtility.RunWithConsoleLogging "cmd.exe /c attrib -S -H """ & sTargetPath & """"
+		End if
+
+		oFileHandling.CopyFile sFoundPath, sTargetPath, true
+
+		' ----------------------------------------------
+		iRC = oUtility.FindFile("REAgentC.exe",sREAgentC)
+		If iRC = SUCCESS then
+			oLogging.CreateEntry "Found REAgentC.exe: " & sREAgentC, LogTypeInfo
+		ElseIf ucase(oEnv("Processor_Architecture")) = "X86" and oFSO.FileExists( sTargetOSDrive & "\Windows\SysWOW64\REAgentC.exe") then
+			sREAgentC = sTargetOSDrive & "\Windows\SysWOW64\REAgentC.exe"
+		ElseIf oFSO.FileExists( sTargetOSDrive & "\Windows\System32\REAgentC.exe") then
+			sREAgentC = sTargetOSDrive & "\Windows\System32\REAgentC.exe"
+		End if
+
+		TestAndFail not isempty(sREAgentC), 10504, "Verify REAgentC.exe is found"
+
+		oUtility.RunWithConsoleLogging sREAgentC & " /info" & sTargetOS
+		oUtility.RunWithConsoleLogging sREAgentC & " /disable"
+		oUtility.RunWithConsoleLogging sREAgentC & " /info" & sTargetOS
+		oUtility.RunWithConsoleLogging sREAgentC & " /setreimage /path """ & oFSO.GetParentFolderName(sTargetPath) & """" & sTargetOS & sBootKey
+		oUtility.RunWithConsoleLogging sREAgentC & " /info" & sTargetOS
+		oUtility.RunWithConsoleLogging sREAgentC & " /enable"
+		oUtility.RunWithConsoleLogging sREAgentC & " /info" & sTargetOS
+
+		' ----------------------------------------------
+
+		If bUnMapDrive then
+			oLogging.CreateEntry "Hide the WinRE Drive again.", LogTypeInfo
+			RunDiskPartSilent array("list volume", "Select volume " & left(oDiskPart.Drive,2), "REMOVE LETTER=" & left(oDiskPart.Drive,2) & " NOERR", "exit" ) 
+		End if
+
+		oLogging.CreateEntry "Done.", LogTypeInfo
+		Main = SUCCESS
+
+	End Function
+
+
+End class
+
+	</script>
+</job>

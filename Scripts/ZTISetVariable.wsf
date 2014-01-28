@@ -1,0 +1,74 @@
+<job id="ZTISetVariable">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTISetVariable.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Set the specified global task sequence variable
+' // 
+' // Usage:     cscript.exe [//nologo] ZTISetVariable.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTISetVariable
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	' No instance variables are required
+		
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' No initialization is required
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		' Set the specified variable
+
+		oLogging.CreateEntry "Setting variable " & oEnvironment.Item("VariableName") & " to value " & oEnvironment.Item("VariableValue"), LogTypeInfo
+		oEnvironment.Item(oEnvironment.Item("VariableName")) = oEnvironment.Item("VariableValue")
+
+		Main = Success
+
+	End Function
+
+End Class
+
+	</script>
+</job>

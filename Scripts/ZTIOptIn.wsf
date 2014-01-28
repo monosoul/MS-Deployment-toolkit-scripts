@@ -1,0 +1,93 @@
+<job id="ZTIOptIn">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIOptIn.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Opt in to Customer Experience Improvement Program (CEIP) and
+' //            Windows Error Reporting.
+' // 
+' // Usage:     cscript ZTIOptIn.wsf /CEIP:YES /WER:YES [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+Const ANSWER_TO_LIFE_THE_UNIVERSE_AND_EVERYTHING = 42
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIOptIn
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+
+		iRetVal = Success
+
+
+		' If indicated, enable CEIP
+
+		If oEnvironment.Item("CEIP") = "YES" then
+
+			oLogging.CreateEntry "Enabling Customer Experience Improvement Program.", LogTypeInfo
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SQMClient\Windows\CEIPEnable", 1, "REG_DWORD"
+
+		End if
+
+
+		' If indicated, enable WER
+
+		If oEnvironment.Item("WER") = "YES" then
+
+			oLogging.CreateEntry "Enabling Windows Error Reporting.", LogTypeInfo
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting\Consent\DefaultConsent", 3, "REG_DWORD"
+
+		End if
+
+
+		Main = iRetVal
+
+	End Function
+
+End Class
+
+   </script>
+</job>

@@ -1,0 +1,310 @@
+<job id="ZTIExecuteRunbook">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIExecuteRunbook.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Execute a System Center Orchestrator 2012 runbook
+' // 
+' // Usage:     cscript ZTIExecuteRunbook.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIExecuteRunbook
+
+	'//----------------------------------------------------------------------------
+	'//  Global constant and variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+		Dim sURL
+		Dim sMode
+		Dim i, iCount
+		Dim sID, sVar, sVal
+		Dim sParameters
+		Dim sRequest
+		Dim oResult
+		Dim oJob
+		Dim sJob
+		Dim bFinish
+		Dim oStatus
+		Dim oInstances
+		Dim oInstance
+		Dim oParameters
+		Dim oParameter
+		Dim sName
+		Dim sValue
+
+
+		' Local Variables
+
+		iRetVal = Success
+
+
+		' Build the Orchestrator server URL
+
+		If Left(LCase(oEnvironment.Item("OrchestratorServer")), 7) = "http://" or Left(LCase(oEnvironment.Item("OrchestratorServer")), 8) = "https://" then
+			If Right(LCase(oEnvironment.Item("OrchestratorServer")), 4) = ".svc" then
+				sUrl = oEnvironment.Item("OrchestratorServer") & "/Jobs"
+			Else
+				sUrl = oEnvironment.Item("OrchestratorServer") & "/Orchestrator2012/Orchestrator.svc/Jobs"
+			End if
+		ElseIf Instr(oEnvironment.Item("OrchestratorServer"),":") > 0 then
+			sURL = "http://" & oEnvironment.Item("OrchestratorServer") & "/Orchestrator2012/Orchestrator.svc/Jobs"
+		Else
+			sURL = "http://" & oEnvironment.Item("OrchestratorServer") & ":81/Orchestrator2012/Orchestrator.svc/Jobs"
+		End if
+		oLogging.CreateEntry "Orchestrator server URL = " & sURL, LogTypeInfo
+
+		oLogging.CreateEntry "Runbook name = " & oEnvironment.Item("RunbookName"), LogTypeInfo
+		oLogging.CreateEntry "Runnbook ID = " & oEnvironment.Item("RunbookID"), LogTypeInfo
+		sMode = UCase(oEnvironment.Item("RunbookParameterMode"))
+		oLogging.CreateEntry "Runbook parameter mode = " & sMode, LogTypeInfo
+
+
+		' Build the parameters
+
+		If oEnvironment.Item("RunbookParameters0ParameterID") <> "" then
+			sParameters = "&lt;Data&gt;"
+
+			' Loop through all possible parameters and add them to the request
+			For i = 0 to 999
+
+				' If the ID can't be found, we're out of parameters, so exit the loop
+				sID = oEnvironment.Item("RunbookParameters" & CStr(i) & "ParameterID")
+				If sID = "" then
+					Exit For
+				End if
+
+				' Get the name and value
+				sVar = oEnvironment.Item("RunbookParameters" & CStr(i) & "ParameterName")
+				If sMode = "AUTO" then
+					sVal = oEnvironment.Item(sVar)
+				Else
+					sVal = oEnvironment.Item("RunbookParameters" & CStr(i) & "ParameterValue")
+				End if
+
+				' Add it to the request
+				sParameters = sParameters & "&lt;Parameter&gt;&lt;Name&gt;" & sVar & "&lt;/Name&gt;&lt;ID&gt;{" & sID & "}&lt;/ID&gt;&lt;Value&gt;" & oEnvironment.Substitute(sVal) & "&lt;/Value&gt;&lt;/Parameter&gt;"
+				oLogging.CreateEntry "Added parameter " & sVar & " (" & sID & ")", LogTypeInfo
+
+			Next
+			sParameters = sParameters & "&lt;/Data&gt;"
+		End if
+
+
+		' Build the job request
+
+		sRequest = "<?xml version=""1.0"" encoding=""utf-8"" standalone=""yes""?>" & _
+			"<entry xmlns:d=""http://schemas.microsoft.com/ado/2007/08/dataservices"" xmlns:m=""http://schemas.microsoft.com/ado/2007/08/dataservices/metadata"" xmlns=""http://www.w3.org/2005/Atom"">" & _
+			"<content type=""application/xml"">" & _
+			"<m:properties>" & _
+			"  <d:RunbookId m:type=""Edm.Guid"">" & oEnvironment.Item("RunbookID") & "</d:RunbookId>" & _
+			"  <d:Parameters>" & sParameters & "</d:Parameters>" & _
+			"</m:properties>" & _
+			"</content>" & _
+			"</entry>"
+		oLogging.CreateEntry sRequest, LogTypeVerbose
+
+
+		' Invoke the job
+
+		Set oResult = Invoke(sURL, "POST", sRequest)
+		If oResult is Nothing then
+			oLogging.ReportFailure "Unable to create Orchestrator job for the specified runbook.", 10801
+		End if
+
+
+		' Get the job ID
+
+		Set oJob = oResult.SelectSingleNode("//entry/id")
+		If oJob is Nothing then
+			oLogging.ReportFailure "Unable to find job.", 10802
+		End if
+		sJob = oJob.Text
+		oLogging.CreateEntry "Orchestrator job created: " & sJob, LogTypeInfo
+
+
+		' Are we waiting for the runbook to complete?  If not, exit
+
+		If UCase(oEnvironment.Item("WaitUntilComplete")) <> "TRUE" then
+			oLogging.CreateEntry "No need to wait for job to complete.", LogTypeInfo
+			Main = Success
+			Exit Function
+		End if
+
+
+		' Wait for the runbook
+
+		i = 1
+		bFinish = False
+		Do While not bFinish
+
+			Set oJob = Invoke(sJob, "GET", "")
+			If oJob is Nothing then
+				oLogging.ReportFailure "Unable to get Orchestrator job status.", 10803
+			End if
+
+			Set oStatus = oJob.SelectSingleNode("//entry/content/m:properties/d:Status")
+			If not (oStatus is Nothing) then
+				If UCase(oStatus.Text) <> "PENDING" and UCase(oStatus.Text) <> "RUNNING" then
+					bFinish = True
+				Else
+					WScript.Sleep i * 1000
+					If i <= 32 then
+						i = i * 2
+					End if
+					oLogging.CreateEntry "Job status: " & oStatus.Text, LogTypeInfo
+				End if					
+			End if
+
+		Loop		
+		oLogging.CreateEntry "Final job status: " & oStatus.Text, LogTypeInfo
+
+
+		' Process the results
+
+
+		' Get the instance ID
+
+		Set oInstances = Invoke(sJob & "/Instances", "GET", "")
+		Set oInstance = oInstances.SelectSingleNode("//entry/id")
+		If oInstance is Nothing then
+			oLogging.ReportFailure "Unable to get Orchestrator job runbook instance.", 10804
+		End if
+
+
+		' Retrieve and process the parameters
+
+		oLogging.CreateEntry "Processing any out parameters.", LogTypeInfo
+		Set oParameters = Invoke(oInstance.Text & "/Parameters", "GET", "")
+		If oParameters is Nothing then
+			oLogging.ReportFailure "Unable to get Orchestrator job runbook instance parameters.", 10805
+		End if
+		For each oParameter in oParameters.SelectNodes("//entry")
+
+			If UCase(oParameter.selectSingleNode("content/m:properties/d:Direction").Text) = "OUT" then
+				oLogging.CreateEntry "Processing output parameter " & oParameter.selectSingleNode("content/m:properties/d:Name").Text, LogTypeInfo
+				sName = Replace(oParameter.selectSingleNode("content/m:properties/d:Name").Text, " ", "")
+				sValue = oParameter.selectSingleNode("content/m:properties/d:Value").Text
+				oEnvironment.Item(sName) = sValue
+			End if
+
+		Next
+
+
+		' Force a failure if the runbook did not complete successfully
+
+		If UCase(oStatus.Text) <> "COMPLETED" then
+			oLogging.ReportFailure "Runbook did not complete successfully, final status = " & oStatus.Text, 10806
+		End if
+
+		oLogging.CreateEntry "Runbook executed successfully.", LogTypeInfo
+
+
+		' Done
+
+		Main = iRetVal
+
+	End Function
+
+	Function Invoke(sURL, sMethod, sEnvelope)
+
+		Dim oHTTP
+		Dim sReturn
+		Dim oReturn
+		Dim oNode
+		Dim sUserID, sPassword
+
+
+		Set oHTTP = CreateObject("MSXML2.ServerXMLHTTP")
+		Set oReturn = CreateObject("MSXML2.DOMDocument")
+		Set Invoke = oReturn
+
+
+		' Set timeouts to infinite for name resolution, 60 seconds for connect, send, and receive
+
+		oHTTP.setTimeouts 0, 60000, 60000, 60000
+
+
+		' Ignore SSL errors (avoids having to deal with certificates)
+
+		oHTTP.SetOption 2, 13056
+
+
+		' Issue the web service call
+
+		If oEnvironment.Item("_SMSTSReserved1") <> "" AND oEnvironment.Item("_SMSTSReserved2") <> "" Then
+			OEnvironment.Item("UserDomain") = Left(oEnvironment.Item("_SMSTSReserved1"),Instr(oEnvironment.Item("_SMSTSReserved1"),"\")-1)
+			oEnvironment.Item("UserID")= Mid(oEnvironment.Item("_SMSTSReserved1"),Instr(oEnvironment.Item("_SMSTSReserved1"),"\")+1)
+			oEnvironment.Item("UserPassword")=oEnvironment.Item("_SMSTSReserved2")
+		End if
+
+		sUserID = oEnvironment.Item("UserDomain") & "\" & oEnvironment.Item("UserID")
+		sPassword = oEnvironment.Item("UserPassword")
+
+		oLogging.CreateEntry "About to execute web service call using method " & sMethod & " to " & sURL & ": " & sEnvelope, LogTypeVerbose
+		oHTTP.open sMethod, sURL, False, sUserID, sPassword
+		oHTTP.setRequestHeader "Content-Type", "application/atom+xml"
+
+		On Error Resume Next
+		oHTTP.send sEnvelope
+		If Err then
+			oLogging.CreateEntry "Error executing web service " & sURL & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+			Set Invoke = Nothing
+			Exit Function
+		End If
+		On Error Goto 0
+
+		If oHTTP.status = 200 or oHTTP.status = 201 then
+			oLogging.CreateEntry "Response from web service: " & oHTTP.status & " " & oHTTP.StatusText, LogTypeVerbose
+		Else
+			oLogging.CreateEntry "Unexpected response from web service: " &	 oHTTP.status & " " & oHTTP.StatusText & vbCrLf & oHTTP.responseText, LogTypeError
+			Set Invoke = Nothing
+			Exit Function
+		End If
+
+
+		' Process the results
+
+		oReturn.loadXML oHTTP.responseText
+
+		oLogging.CreateEntry "Successfully executed the web service.", LogTypeVerbose
+
+	End Function
+
+End Class
+
+   </script>
+</job>

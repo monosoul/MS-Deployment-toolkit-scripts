@@ -1,0 +1,536 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wizard>
+  <DLLs>
+    <DLL Name="OSDRefreshWizard.dll" />
+    <DLL Name="SharedPages.dll" />
+  </DLLs>
+  <Style>
+    <Setter Property="bannerFilename">UDI_Wizard_Banner.bmp</Setter>
+    <Setter Property="title">Operating System Deployment (OSD) Wizard</Setter>
+  </Style>
+  <Pages>
+    <Page Name="WelcomePage" DisplayName="Welcome" Type="Microsoft.SharedPages.WelcomePage">
+      <Fields>
+        <Field Name="WelcomeText" Enabled="true" Summary="">
+          <Default>
+            Welcome to the Deployment Wizard.
+
+            This wizard will walk you through a series of screens that will allow you to customize and install Windows.  During setup you can choose to backup and/or restore your data and settings or you may choose to do a clean install and wipe all data.  After you have entered machine and user information, the wizard will begin a full install of Windows.
+
+Click on the 'Next' button to start your installalation.
+
+Please allow 2 hours for installation.
+
+If you need support during this process, please e-mail your system administrator.
+          </Default>
+        </Field>
+      </Fields>
+    </Page>
+    <Page Name="ConfigScanPage" DisplayName="Deployment Readiness" Type="Microsoft.OSDRefresh.ConfigScanPage">
+      <Tasks NameTitle="Configuration Check Name" StatusTitle="Status">
+        <Task DisplayName="Check Windows Scripting Host" Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="filename">%windir%\system32\cscript.exe</Setter>
+          <Setter Property="parameters">Preflight\OSDCheckWSH.vbs</Setter>
+          <Setter Property="BitmapFilename">images\WinScriptHost.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Windows Scripting Host not installed." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Wired Network Check" Type="Microsoft.SharedPages.WiredNetworkTask">
+          <Setter Property="BitmapFilename">images\WiredNetwork.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="No Wired connection found. Please plug in to a network cable." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Application Discovery" Type="Microsoft.OSDRefresh.AppDiscoveryTask">
+          <Setter Property="readcfg">$LogPath$\OSDSetupWizard.xml.app</Setter>
+          <Setter Property="writecfg">%temp%\AppDiscoveryresult.xml.app</Setter>
+          <Setter Property="log">$LogPath$\AppDiscovery.log</Setter>
+          <Setter Property="BitmapFilename">images\AppDiscovery.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="Successfully scanned applications." />
+            <ExitCode State="Warning" Type="1" Value="*" Text="Could not run application discovery engine (reason unknown). The appropriate applications may not be selected." />
+            <ExitCode State="Warning" Type="1" Value="1" Text="One or more warnings were encountered (nonfatal) while running App Discovery. The appropriate applications may not be selected." />
+            <ExitCode State="Warning" Type="1" Value="16777216" Text="Critical problems were encountered while initializing App Discovery. The appropriate applications may not be selected." />
+            <ExitCode State="Warning" Type="1" Value="33554432" Text="Critical problems were encountered while processing the Application Master List. The appropriate applications may not be selected." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Get Printers" Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="filename">%windir%\system32\cscript.exe</Setter>
+          <Setter Property="parameters">Preflight\OSD_GetPrinters.vbs /xmlout:%temp%\PrinterList.xml;$LogPath$\PrinterList.xml</Setter>
+          <Setter Property="BitmapFilename">images\Printers.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Warning" Type="1" Value="10" Text="Output filename not specified correctly." />
+            <ExitCode State="Warning" Type="1" Value="20" Text="Unable to create output file." />
+            <ExitCode State="Warning" Type="1" Value="*" Text="An unknown error has occurred." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="CheckSMSFolderOnUSB" Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="filename">%windir%\system32\cscript.exe</Setter>
+          <Setter Property="parameters">Preflight\CheckSMSFolderOnUSB.vbs</Setter>
+          <Setter Property="BitmapFilename">images\USB.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Please disconnect any USB Drives at this time, cancel the wizard, and start the task sequence over." />
+            <Error State="Error" Type="-1" Value="2" Text="The path not found" />
+            <Error State="Error" Type="-1" Value="3" Text="The file not found" />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="AC Power Check" Type="Microsoft.OSDRefresh.ACPowerTask">
+          <Setter Property="BitmapFilename">images\ACPower.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="No AC power detected. Please plug in to power." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Check Drive Encryption"  Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="filename">%windir%\system32\cscript.exe</Setter>
+          <Setter Property="parameters">Preflight\OSDBitlockerState.vbs %systemdrive%</Setter>
+          <Setter Property="BitmapFilename">images\bitlocker.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Warning" Type="1" Value="1" Text="Drive is fully encrypted. Encryption will be paused during deployment and resumed." />
+            <ExitCode State="Warning" Type="1" Value="4" Text="Drive encryption is paused. Encryption will resume after deployment has completed." />
+            <ExitCode State="Warning" Type="1" Value="5" Text="Drive encryption is paused. Encryption will resume after deployment has completed." />
+            <ExitCode State="Error" Type="-1" Value="2" Text="Drive is currently encrypting. Please fully encrypt or pause encryption to continue." />
+            <ExitCode State="Error" Type="-1" Value="3" Text="Drive is currently decrypting. Please fully decrypt or pause decryption to continue." />
+            <ExitCode State="Error" Type="-1" Value="*" Text="A script error was detected. Please contact support to continue." />
+          </ExitCodes>
+        </Task>
+      </Tasks>
+    </Page>
+    <Page Name="ConfigScanBareMetal" DisplayName="Deployment Readiness" Type="Microsoft.OSDRefresh.ConfigScanPage">
+      <Tasks NameTitle="Configuration Check Name" StatusTitle="Status">
+        <Task DisplayName="Check Windows Scripting Host" Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="filename">%windir%\system32\cscript.exe</Setter>
+          <Setter Property="parameters">Preflight\OSDCheckWSH.vbs</Setter>
+          <Setter Property="BitmapFilename">images\WinScriptHost.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Windows Scripting Host not installed." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Wired Network Check" Type="Microsoft.SharedPages.WiredNetworkTask">
+          <Setter Property="BitmapFilename">images\WiredNetwork.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="No Wired connection found. Please plug in to a network cable." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="AC Power Check" Type="Microsoft.OSDRefresh.ACPowerTask">
+          <Setter Property="BitmapFilename">images\ACPower.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="No AC power detected. Please plug in to power." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="OEMMedia Lookup" Type="Microsoft.OSDRefresh.PrestageDriveLookupTask">
+          <Setter Property="BitmapFilename"></Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="Success" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Error" />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Application Discovery" Type="Microsoft.OSDRefresh.AppDiscoveryTask">
+          <Setter Property="readcfg">%OSDDataSourceDrive%\%OSDDataSourceDirectory%\AppDiscoveryresult.xml.app</Setter>
+          <Setter Property="writecfg">%temp%\AppDiscoveryresult.xml.app</Setter>
+          <Setter Property="log">$LogPath$\AppDiscovery.log</Setter>
+          <Setter Property="BitmapFilename">images\AppDiscovery.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="Successfully scanned applications." />
+            <ExitCode State="Warning" Type="1" Value="*" Text="Could not run application discovery engine (reason unknown). The appropriate applications may not be selected." />
+            <ExitCode State="Success" Type="0" Value="1" Text="AppDiscovery exited with success as Application matching information is not available in Windows PE." />
+            <ExitCode State="Warning" Type="1" Value="16777216" Text="Critical problems were encountered while initializing App Discovery. The appropriate applications may not be selected." />
+            <ExitCode State="Warning" Type="1" Value="33554432" Text="Critical problems were encountered while processing the Application Master List. The appropriate applications may not be selected." />
+          </ExitCodes>
+        </Task>
+      </Tasks>
+    </Page>
+    <Page Name="RebootPage" DisplayName="Reboot" Type="Microsoft.OSDRefresh.RebootPage">
+      <Fields>
+        <Field Name="RebootText" Enabled="true" Summary="">
+          <Default>
+            Your machine will now be rebooted.
+
+            Click on the 'Finish' button to reboot.
+          </Default>
+        </Field>
+      </Fields>
+    </Page>
+    <Page Name="WelcomePageReplace" DisplayName="Welcome" Type="Microsoft.SharedPages.WelcomePage">
+      <Fields>
+        <Field Name="WelcomeText" Enabled="true" Summary="">
+          <Default>
+            Welcome to the Replace Wizard.
+
+            This wizard will walk you through a series of screens that will allow you to customize your data and settings for USMT.  After you have entered the information, the wizard will begin USMT.
+
+            Click on the 'Next' button to start.
+
+            Please allow 2 hours for USMT.
+
+            If you need support during this process, please e-mail your system administrator.
+          </Default>
+        </Field>
+      </Fields>
+    </Page>
+    <Page Name="VolumePage" DisplayName="Volume" Type="Microsoft.OSDRefresh.VolumePage">
+      <Fields>
+        <Field Name="Image" Enabled="true" VarName="OSDImageIndex" Summary="Image Selection:" />
+        <Field Name="Volume" Enabled="true" Summary="Volume:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">There are no volumes available for installing the OS.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Directory" Enabled="true" Summary="Windows Directory:" />
+        <Field Name="Format" Enabled="true" VarName="OSDDiskPart" Summary="Format:" />
+      </Fields>
+      <Setter Property="MinimumVolumeSize">10</Setter>
+      <Setter Property="FormatWinPE">Partition and &amp;format disk 0.</Setter>
+      <Setter Property="FormatFullOS">&amp;Clean the selected volume.</Setter>
+      <Setter Property="FormatWinPEWarning">WARNING: Choosing this option will repartition and format disk 0!</Setter>
+      <Setter Property="FormatFullOSWarning">WARNING: Choosing this option will delete all data on the target volume!</Setter>
+      <Data Name="ImageSelection">
+        <DataItem>
+          <Setter Property="DisplayName">Windows 7 RTM (x86)</Setter>
+          <Setter Property="Index">1</Setter>
+          <Setter Property="Architecture">x86</Setter>
+          <Setter Property="ImageName">Windows 7 RTM Images</Setter>
+        </DataItem>
+      </Data>
+    </Page>
+    <Page Name="UserRestorePage" DisplayName="Select Target" Type="Microsoft.OSDRefresh.UserStatePage">
+      <Fields>
+        <RadioGroup Name="LocationGroup" Locked="false" />
+        <Field Name="TargetDrive" Enabled="true" VarName="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">No target drive found. Please insert a valid USB drive and click the Refresh button.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="NetworkLocation" Enabled="true" VarName="SMSConnectNetworkFolderPath">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">No valid network share.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Username" Enabled="true" VarName="OSDUserStateKey" Summary="User:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">You have to input user name. Example is domain\user.</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">User name format is invalid. Example is domain\user.</Setter>
+            <Setter Property="Pattern">^([A-Za-z0-9-\.]+)\\([^+#,*"&lt;&gt;;=\[\]:?/|']+)$</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Password" Enabled="true" VarName="OSDUserStateKeyPassword" Summary="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">Password is required. Please enter the password.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="NoDataRadio" Enabled="true" VarName="" />
+        <Field Name="LocalRadio" Enabled="true" VarName="" />
+        <Field Name="USBRadio" Enabled="true" VarName="" />
+        <Field Name="NetworkRadio" Enabled="true" VarName="" />
+      </Fields>
+      <Setter Property="DataSourceText">Please select a location where user data will be captured and/or restored.</Setter>
+      <Setter Property="Format">disable</Setter>
+      <Setter Property="FormatPrompt">disable</Setter>
+      <Setter Property="MinimumDriveSize">10</Setter>
+      <Setter Property="State">Restore</Setter>
+      <Setter Property="NetworkDrive">n:</Setter>
+      <Data Name="Network"></Data>
+    </Page>
+    <Page Name="ComputerPage" DisplayName="New Computer Details" Type="Microsoft.OSDRefresh.ComputerPage">
+      <Fields>
+        <RadioGroup Name="DomainGroup" Locked="false">
+          <Default>Workgroup</Default>
+        </RadioGroup>
+        <Field Name="ComputerName" Enabled="true" VarName="OSDComputerName" Summary="Computer Name:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">The computer name is required. Please enter a computer name.</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">The computer name is not valid. It either contains a character that isn't allowed, or is longer than 15 characters.</Setter>
+            <Setter Property="NamedPattern">ComputerName</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.InvalidChars">
+            <Setter Property="Message">One of the characters in the computer name is not valid.</Setter>
+            <Setter Property="InvalidChars"></Setter>
+          </Validator>
+        </Field>
+        <Field Name="DomainCombo" Enabled="true" VarName="OSDDomainName">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">You must select a domain.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="DomainOUCombo" Enabled="true" VarName="OSDDomainOUName" />
+        <Field Name="WorkgroupName" Enabled="true" VarName="OSDWorkgroupName" Summary="Workgroup:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">The workgroup name must be between 1 and 15 characters long, and cannot contain any of these characters: " : ; | = + * ? &lt; &gt;</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">The workgroup name must be between 1 and 15 characters long, and cannot contain any of these characters: " : ; | = + * ? &lt; &gt;</Setter>
+            <Setter Property="NamedPattern">Workgroup</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Username" Enabled="true" VarName="OSDJoinAccount" Summary="Join Domain Account:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">You have to input user name. Example is domain\user.</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">User name format is invalid. Example is domain\user.</Setter>
+            <Setter Property="Pattern">^([A-Za-z0-9-\.]+)\\([^+#,*"&lt;&gt;;=\[\]:?/|']+)$</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Password" Enabled="true" VarName="OSDJoinPassword" Summary="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">Password is required. Please enter the password.</Setter>
+          </Validator>
+        </Field>
+      </Fields>
+      <Setter Property="ADCredentialCheck" Type="boolean">true</Setter>
+      <Setter Property="ADComputerObjectCheck" Type="boolean">true</Setter>
+      <Setter Property="UseExistingComputerName" Type="boolean">false</Setter>
+      <Data Name="Domain" />
+    </Page>
+    <Page Name="AdminAccounts" DisplayName="Administrator Password" Type="Microsoft.SharedPages.AdminAccountsPage">
+      <Fields>
+        <Field Name="Username" Enabled="true" VarName="OSDAddAdmin" Summary="Add as Administrator:">
+          <Default>%OSDJoinAccount%</Default>
+          <Validator Type="Microsoft.Wizard.Validation.InvalidChars">
+            <Setter Property="Message">One of the characters in the Account Name(s) field is not valid.</Setter>
+            <Setter Property="InvalidChars">/[]:|=,+*&lt;&gt;?"</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Password" Enabled="true" VarName="OSDLocalAdminPassword" Summary="">
+          <Default></Default>
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">Password is required. Please enter the password.</Setter>
+          </Validator>
+        </Field>
+      </Fields>
+    </Page>
+    <Page Name="UDAPage" DisplayName="User Device Affinity" Type="Microsoft.OSDRefresh.UDAPage">
+      <Fields>
+        <Field Name="DeviceAfinity" Enabled="true" Summary="">
+          <Default>false</Default>
+        </Field>
+        <Field Name="Username" Enabled="true" VarName="SMSTSUdaUsers" Summary="User Device Affinity Account:">
+          <Default>%OSDJoinAccount%</Default>
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">You have to input user name. Example is domain\user.</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">User name format is invalid. Example is domain\user.</Setter>
+            <Setter Property="Pattern">^([A-Za-z0-9-]+)\\([^+#,*"&lt;&gt;;=\[\]:?/|']+)$</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Password" Enabled="true" />
+      </Fields>
+    </Page>
+    <Page Name="LanguagePage" DisplayName="Language" Type="Microsoft.OSDRefresh.LanguagePage">
+      <Fields>
+        <Field Name="LanguagePack" Enabled="true" VarName="UILanguage" Summary="Language Pack:">
+          <Default>EN-US</Default>
+        </Field>
+        <Field Name="InputLocale" Enabled="true" VarName="UserLocale" Summary="Locale:">
+          <Default>EN-US</Default>
+        </Field>
+        <Field Name="KeyboardLocale" Enabled="true" VarName="KeyboardLocale" Summary="Keyboard Locale:">
+          <Default>00000409</Default>
+        </Field>
+        <Field Name="TimeZone" Enabled="true" VarName="OSDTimeZone" Summary="Time Zone:">
+          <Default>Pacific Standard Time</Default>
+        </Field>
+      </Fields>
+      <Data Name="LanguagePacks">
+        <DataItem>
+          <Setter Property="DisplayName">English (United States)</Setter>
+          <Setter Property="Language">EN-US</Setter>
+        </DataItem>
+      </Data>
+    </Page>
+    <Page Name="ApplicationPage" DisplayName="Install Programs" Type="Microsoft.OSDRefresh.ApplicationPage">
+      <Setter Property="Link.Uri">%temp%\AppDiscoveryresult.xml.app</Setter>
+      <Setter Property="TsAppBaseVariable">PACKAGES</Setter>
+      <Setter Property="TsApplicationBaseVariable">APPLICATIONS</Setter>
+      <Setter Property="TsWindowsAppPackageAppBaseVariable">WINDOWSAPPPACKAGEAPPS</Setter>
+      <Setter Property="TsAppInstall">AppInstall</Setter>
+    </Page>
+    <Page Name="SummaryPage" DisplayName="Summary" Type="Microsoft.Shared.SummaryPage" />
+    <Page Name="UserCapturePageOldPC" DisplayName="Select Target" Type="Microsoft.OSDRefresh.UserStatePage">
+      <Fields>
+        <RadioGroup Name="LocationGroup" Locked="false" />
+        <Field Name="TargetDrive" Enabled="true" VarName="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">No target drive found. Please insert a valid USB drive and click the Refresh button.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="NetworkLocation" Enabled="true" VarName="SMSConnectNetworkFolderPath">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">No valid network share.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Username" Enabled="true" VarName="OSDUserStateKey" Summary="User:">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">You have to input user name. Example is domain\user.</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">User name format is invalid.  Example is domain\user.</Setter>
+            <Setter Property="Pattern">^([A-Za-z0-9-\.]+)\\([^+#,*"&lt;&gt;;=\[\]:?/|']+)$</Setter>
+          </Validator>
+        </Field>
+        <Field Name="Password" Enabled="true" VarName="OSDUserStateKeyPassword" Summary="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">Password is required. Please enter the password.</Setter>
+          </Validator>
+        </Field>
+        <Field Name="NoDataRadio" Enabled="false" VarName="" />
+        <Field Name="LocalRadio" Enabled="false" VarName="" />
+        <Field Name="USBRadio" Enabled="true" VarName="" />
+        <Field Name="NetworkRadio" Enabled="true" VarName="" />
+      </Fields>
+      <Setter Property="DataSourceText">Please select a location where user data will be captured.</Setter>
+      <Setter Property="Format">disable</Setter>
+      <Setter Property="FormatPrompt">disable</Setter>
+      <Setter Property="MinimumDriveSize">10</Setter>
+      <Setter Property="State">Capture</Setter>
+      <Setter Property="NetworkDrive">n:</Setter>
+      <Data Name="Network" />
+    </Page>
+    <Page Name="ProgressPage" DisplayName="Capture Data" Type="Microsoft.OSDRefresh.ProgressPage">
+      <Setter Property="LogFilename">$LogPath$\USMTcapture.prg</Setter>
+      <Tasks NameTitle="Task Name" StatusTitle="Status">
+        <Task DisplayName="Copy AppDiscovery XML" Type="Microsoft.Wizard.CopyFilesTask">
+          <File Source="%temp%\AppDiscoveryresult.xml.app" Dest="$DriveLetter$\%OSDDataSourceDirectory%" />
+          <Setter Property="BitmapFilename">images\copy.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Copy failed." />
+            <Error State="Error" Type="-1" Value="*" Text="Copy failed. Please check the OSD Wizard log file for details." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Copy Printers XML" Type="Microsoft.Wizard.CopyFilesTask">
+          <File Source="%temp%\PrinterList.xml" Dest="$DriveLetter$\%OSDDataSourceDirectory%" />
+          <Setter Property="BitmapFilename">images\Printers.ico</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Copy failed. Please check the OSD Wizard log file for details." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Copy ProductsList" Type="Microsoft.Wizard.CopyFilesTask">
+          <File Source="%temp%\ProductsInstalled.txt" Dest="$DriveLetter$\%OSDDataSourceDirectory%" />
+          <Setter Property="BitmapFilename">images\copy.bmp</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="Copy failed." />
+            <Error State="Error" Type="-1" Value="*" Text="Copy failed. Please check the OSD Wizard log file for details." />
+          </ExitCodes>
+        </Task>
+        <Task DisplayName="Run USMT" Type="Microsoft.Wizard.ShellExecuteTask">
+          <Setter Property="BitmapFilename">images\usmt.bmp</Setter>
+          <Setter Property="filename">%windir%\system32\wscript.exe</Setter>
+          <Setter Property="parameters">//B %ScriptRoot%\ZTIUserState.wsf /capture /OSDStateStorePath:$DriveLetter$\%OSDDataSourceDirectory% /UserDataKey:%OSDUserStateKeyPassword%</Setter>
+          <ExitCodes>
+            <ExitCode State="Success" Type="0" Value="0" Text="" />
+            <ExitCode State="Error" Type="-1" Value="*" Text="USMT scan state failed." />
+          </ExitCodes>
+        </Task>
+      </Tasks>
+    </Page>
+    <Page Name="RebootAfterCapture" DisplayName="Reboot" Type="Microsoft.OSDRefresh.RebootPage">
+      <Fields>
+        <Field Name="RebootText" Enabled="true" Summary="">
+          <Default>
+            Your machine will now be rebooted.
+
+            Click on the 'Finish' button to reboot.
+          </Default>
+        </Field>
+      </Fields>
+    </Page>
+    <Page Name="BitLocker" DisplayName="BitLocker" Type="Microsoft.OSDRefresh.BitLockerPage">
+      <Fields>
+        <!-- Valid values: TPM,TPMPIN,TPMKey and ExternalKey-->
+        <RadioGroup Name="BitLockerRadioGroup" Locked="false">
+          <Default>TPMPIN</Default>
+        </RadioGroup>
+        <RadioGroup Name="LocationGroup" Locked="false">
+          <Default>AD</Default>
+        </RadioGroup>
+        <Field Name="BitLocker" Enabled="true" VarName="BDEInstallSuppress" Summary="">
+          <Default>True</Default>
+        </Field>
+        <Field Name="PIN" Enabled="true" VarName="BDEPIN" Summary="">
+          <Validator Type="Microsoft.Wizard.Validation.NonEmpty">
+            <Setter Property="Message">The PIN must not be emtpy</Setter>
+          </Validator>
+          <Validator Type="Microsoft.Wizard.Validation.RegEx">
+            <Setter Property="Message">PIN should be a number between 4-20 digits</Setter>
+            <Setter Property="Pattern">^[0-9-]{4,20}$</Setter>
+          </Validator>
+        </Field>
+        <Field Name="WaitForEncryption" Enabled="true" VarName="OSDBitlockerWaitForEncryption" Summary="">
+          <Default>True</Default>
+        </Field>
+      </Fields>
+      <Setter Property="KeyLocation" />
+    </Page>
+  </Pages>
+  <StageGroups>
+    <StageGroup DisplayName="New Computer">
+      <Stage Name="NEWCOMPUTER" DisplayName="New Computer">
+        <PageRef Page="WelcomePage" />
+        <PageRef Page="BitLocker" />
+        <PageRef Page="VolumePage" />
+        <PageRef Page="UserRestorePage" />
+        <PageRef Page="ConfigScanBareMetal" />
+        <PageRef Page="ComputerPage" />
+        <PageRef Page="AdminAccounts" />
+        <PageRef Page="UDAPage" />
+        <PageRef Page="LanguagePage" />
+        <PageRef Page="ApplicationPage" />
+        <PageRef Page="SummaryPage" />
+      </Stage>
+      <Stage Name="NEWCOMPUTER.Prestaged" DisplayName="New Computer (prestaged media)">
+        <PageRef Page="WelcomePage" />
+        <PageRef Page="BitLocker" />
+        <PageRef Page="UserRestorePage" />
+        <PageRef Page="ConfigScanBareMetal" />
+        <PageRef Page="ComputerPage" />
+        <PageRef Page="AdminAccounts" />
+        <PageRef Page="UDAPage" />
+        <PageRef Page="LanguagePage" />
+        <PageRef Page="ApplicationPage" />
+        <PageRef Page="SummaryPage" />
+      </Stage>
+    </StageGroup>
+    <StageGroup DisplayName="Refresh">
+      <Stage Name="REFRESH" DisplayName="Refresh">
+        <PageRef Page="WelcomePage" />
+        <PageRef Page="VolumePage" />
+        <PageRef Page="UserRestorePage" />
+        <PageRef Page="ConfigScanPage" />
+        <PageRef Page="ComputerPage" />
+        <PageRef Page="AdminAccounts" />
+        <PageRef Page="LanguagePage" />
+        <PageRef Page="ApplicationPage" />
+        <PageRef Page="SummaryPage" />
+      </Stage>
+    </StageGroup>
+    <StageGroup DisplayName="Replace">
+      <Stage Name="REPLACE" DisplayName="Replace, in full OS">
+        <PageRef Page="WelcomePageReplace" />
+        <PageRef Page="ConfigScanPage" />
+        <PageRef Page="RebootPage" />
+      </Stage>
+      <Stage Name="REPLACE.WinPE" DisplayName="Replace, in WinPE">
+        <PageRef Page="UserCapturePageOldPC" />
+        <PageRef Page="ProgressPage" />
+        <PageRef Page="RebootAfterCapture" />
+      </Stage>
+    </StageGroup>
+  </StageGroups>
+</Wizard>

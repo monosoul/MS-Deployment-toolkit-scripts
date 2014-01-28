@@ -1,0 +1,147 @@
+<job id="ZTIApplyGPOPack">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIApplyGPOPack.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install GPO Pack created using Security Configuration Manager (SCM)
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIApplyGPOPack.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIApplyGPOPack
+
+	'//------------------------------------------------------------------------
+	'//  Class variable declarations
+	'//------------------------------------------------------------------------
+	Public iRetVal
+
+	'//------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim sGPOPackPath
+		Dim sGPOPackFullPath
+		Dim sOSVersion
+		Dim sOS
+		Dim bStandard
+
+		iRetVal = 0
+
+		'//----------------------------------------------------------------------------
+		'// If ApplyGPOPack = NO then do not apply GPO
+		'//----------------------------------------------------------------------------
+		if  UCASE(oEnvironment.Item("ApplyGPOPack")) = "NO" then
+			oLogging.CreateEntry "ApplyGPOPack set to NO, exiting function.", LogTypeInfo
+			iRetVal = 0
+			exit function
+		End if
+		
+		'//----------------------------------------------------------------------------
+		'// Determine GPO Pack Path
+		'//----------------------------------------------------------------------------
+		If len(oEnvironment.Item("GPOPackPath")) > 0 then 
+			'// Path has been set via environment variable
+			'// This is a relevant path from the Deployment Share .\Templates\GPOPacks folder
+			sGPOPackPath = oEnvironment.Item("GPOPackPath")
+			oLogging.CreateEntry "USing GPO Pack Path Specified in variable GPOPackPath: " & oEnvironment.Item("GPOPackPath"), LogTypeInfo
+			bStandard = False
+		Else
+			'// Generate path automatically based on OS type using default MDT GPO Packs
+			sOSVersion = oEnvironment.Item("OSCurrentVersion")
+			If (Left(sOSVersion,3) = "6.2") and oEnvironment.Item("IsServerOS") then 
+				sOS = "WS2012RTM"
+				oLogging.CreateEntry "Using Default Windows Server 2012 RTM GPO Pack", LogTypeInfo
+			ElseIf (Left(sOSVersion,3) = "6.2") and Not(oEnvironment.Item("IsServerOS")) then 
+				sOS = "Win8RTM"
+				oLogging.CreateEntry "Using Default Windows 8 RTM GPO Pack", LogTypeInfo
+			ElseIf (Left(sOSVersion,3) = "6.1") and oEnvironment.Item("IsServerOS") then 
+				sOS = "WS2008R2SP1"
+				oLogging.CreateEntry "Using Default Windows 2008 R2 SP1 GPO Pack", LogTypeInfo
+			ElseIf (Left(sOSVersion,3) = "6.1") and Not(oEnvironment.Item("IsServerOS")) then 
+				sOS = "Win7SP1"
+				oLogging.CreateEntry "Using Default Windows 7 SP1 GPO Pack", LogTypeInfo
+			ElseIf (Left(sOSVersion,3) = "6.0") and oEnvironment.Item("IsServerOS") then 
+				sOS = "WS2008SP2"
+				oLogging.CreateEntry "Using Default Windows 2008 SP2 GPO Pack", LogTypeInfo
+			ElseIf (Left(sOSVersion,3) = "6.0") and Not(oEnvironment.Item("IsServerOS")) then 
+				sOS = "WinVistaSP2"
+				oLogging.CreateEntry "Using Default Windows Vista SP2 GPO Pack", LogTypeInfo
+			Else
+				'// Version matching default GPO Pack not found
+				oLogging.CreateEntry "Default MDT GPO Pack not supplied for this operating system.", LogTypeInfo
+				Main = Success
+				Exit Function
+			End If
+			sGPOPackPath = sOS & "-MDTGPOPack"
+			oLogging.CreateEntry "Using GPO Pack Path " & sGPOPackPath, LogTypeInfo
+			bStandard = true
+		End if
+		
+		'//----------------------------------------------------------------------------
+		'// Apply GPO Pack
+		'//----------------------------------------------------------------------------
+		
+		'// Check if path is valid
+		sGPOPackFullPath = oEnvironment.Item("DeployRoot")  & "\Templates\GPOPacks\" & sGPOPackPath
+		If Not(oFSO.FolderExists(sGPOPackFullPath)) then
+			If bStandard then
+				oLogging.CreateEntry "Default MDT GPO Pack not present for this operating system.", LogTypeInfo
+				Main = Success
+			Else
+				oLogging.CreateEntry "The GPO Pack Path - " & sGPOPackFullPath & " is not valid. The GPO was not applied.", LogTypeError
+				Main = 10701
+			End if
+			Exit Function
+		End if
+		
+		'// Copy files to MININT folder
+		oLogging.CreateEntry "Copying GPO Pack files to: " & oUtility.LocalRootPath & "\" & sGPOPackPath, LogTypeInfo
+		oFSO.CopyFolder sGPOPackFullPath, oUtility.LocalRootPath & "\" & sGPOPackPath, True
+		
+		'// Run GPO Pack script
+		iRetVal = oUtility.RunWithHeartbeat("cmd /c cscript.exe """ & oUtility.LocalRootPath & "\" & sGPOPackPath & "\GPOPack.wsf"" /Path:""" & oUtility.LocalRootPath & "\" & sGPOPackPath & """ /silent")
+	
+		Main = iRetVal
+
+	End Function
+
+End Class
+
+	</script>
+</job>

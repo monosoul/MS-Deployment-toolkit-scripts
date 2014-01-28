@@ -1,0 +1,31 @@
+<job id="ZTIConnect">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIErrorMsg.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Report an error when the ConfigMgr task sequence fails
+' // 
+' // Usage:     cscript ZTIErrorMsg.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+	Dim retVal
+
+
+	' Do not use a standard class because that would generate other events after this one
+
+	retVal = oEnvironment.Item("ErrorReturnCode")
+	oLogging.CreateEvent 41014, LogTypeError, "ZTI deployment failed, Return Code = " & PrnErrValue (retVal), Array(retVal)
+	WScript.Quit retVal
+
+   </script>
+</job>

@@ -1,0 +1,823 @@
+<job id="ZTIOSRole">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIPSUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIOSRole.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install or remove the specified operating system roles
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIOSRole.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIOSRole
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+	Dim dicItems
+	Dim bReboot
+	Dim bRetry
+	Dim bUninstall
+	Dim oServerManager
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim sServerManager
+		Dim oServerManagerDoc
+
+		iRetVal = Success
+
+
+		' Abort If there is nothing to do at this point
+
+		If oEnvironment.Item("OSVersion") = "WinPE" then
+
+			oLogging.CreateEntry "This script should only run in the full OS.", LogTypeError
+			Main = Failure
+			Exit Function
+
+		End if
+
+
+		' Determine if install or uninstall
+
+		If oUtility.Arguments.Exists("uninstall") then
+			oLogging.CreateEntry "Roles will be uninstalled.", LogTypeInfo
+			bUninstall = true
+		Else
+			oLogging.CreateEntry "Roles will be installed.", LogTypeInfo
+			bUninstall = false
+		End if
+
+
+		' Load the ServerManager.xml file and find the right set of roles
+
+		TestAndFail oUtility.FindFile("ServerManager.xml", sServerManager), 9001, "FindFile ServerManager.xml"		
+		Set oServerManagerDoc = oUtility.CreateXMLDOMObjectEx(sServerManager)
+		Set oServerManager = oServerManagerDoc.DocumentElement.SelectSingleNode("//Roles[@ID='" & oEnvironment.Item("OSRoleIndex") & "']")
+		If oServerManager is Nothing then
+			oLogging.ReportFailure "Unable to located the selected set of roles in ServerManager.xml (OSRoleIndex = " & oEnvironment.Item("OSRoleIndex") & ")", 9002
+		End if
+
+
+		' Create a dictionary to hold all the items, to simplify things later
+
+		Set dicItems = CreateObject("Scripting.Dictionary")
+		dicItems.CompareMode = vbTextCompare
+
+
+		' Process appropriate items
+
+		If oUtility.Arguments.Exists("uninstall") then
+			ProcessVar "UninstallOSRoles", "Role"
+			ProcessVar "UninstallOSRoleServices", "RoleService"
+			ProcessVar "UninstallOSFeatures", "Feature"
+			ProcessVar "UninstallOptionalOSRoles", "Role"
+			ProcessVar "UninstallOptionalOSRoleServices", "RoleService"
+			ProcessVar "UninstallOptionalOSFeatures", "Feature"
+		Else
+			ProcessVar "OSRoles", "Role"
+			ProcessVar "OSRoleServices", "RoleService"
+			ProcessVar "OSFeatures", "Feature"
+			ProcessVar "OptionalOSRoles", "Role"
+			ProcessVar "OptionalOSRoleServices", "RoleService"
+			ProcessVar "OptionalOSFeatures", "Feature"
+		End if
+
+
+		' If no items have been requested, quit now
+
+		If dicItems.Count = 0 then
+			oLogging.CreateEntry "No roles, role services, or features were specified, exiting.", LogTypeInfo
+			Main = Success
+			Exit Function
+		End if
+
+
+		' Process the requested roles using the appropriate method depending on the running OS
+
+		Select Case Left(oEnvironment.Item("OSCurrentVersion"), 3)
+		Case "5.2"
+
+			'Process Server 2003 roles
+			iRetVal = ProcessServer2k3Roles()
+			TestAndLog iRetVal, "Server 2003 Role Processing"
+			
+		Case "6.0"
+
+			If (UCASE(oEnvironment.Item("IsServerCoreOS")) = "TRUE") then
+
+				' Perform Server core Role Processing
+				iRetVal = ProcessList("CORE")
+				TestAndLog iRetVal, "Server 2008 Core Role Processing"
+
+			ElseIf (UCASE(oEnvironment.Item("IsServerOS")) = "TRUE") then
+
+				' Perform Longhorn Server Role Processing
+				iRetVal = ProcessLHRoles()
+				TestAndLog iRetVal, "Server 2008 Role Processing" 
+
+			Else
+				oLogging.CreateEntry "Windows Vista is not presently supported.", LogTypeInfo
+			End if
+
+			
+		Case "6.1"
+
+			If (UCASE(oEnvironment.Item("IsServerCoreOS")) = "TRUE") then
+
+				' Perform Server core Role Processing
+				iRetVal = ProcessList("CORE")
+				TestAndLog iRetVal, "Server 2008 R2 Core Role Processing"
+				
+			ElseIf (UCASE(oEnvironment.Item("IsServerOS")) = "TRUE") then
+
+				' Use PowerShell to process roles
+				iRetVal = ProcessList("PS")
+				TestAndLog iRetVal, "Server 2008 R2 Role Processing"
+			Else
+
+				' Perform Windows 7 Feature processing
+				iRetVal = ProcessList("DISM")
+
+			End if
+
+
+		Case "6.2"
+
+			If (UCASE(oEnvironment.Item("IsServerOS")) = "TRUE") then
+
+				' Use PowerShell to process roles, regardless of full vs. core
+				iRetVal = ProcessList("PS")
+				TestAndLog iRetVal, "Server 8 Role Processing"
+
+			Else
+
+				' Use DISM to process roles
+				iRetVal = ProcessList("DISM")
+				TestAndLog iRetVal, "DISM Role Processing"
+
+			End if
+
+		Case Else
+
+			oLogging.ReportFailure "Unknown OS current version value, unable to install roles. (OSCurrentVersion = " & oEnvironment.Item("OSCurrentVersion") & ")", 9003
+
+		End Select
+
+
+		' ---------------------------------------------------------------------------
+		' Reboot if needed
+		' ---------------------------------------------------------------------------
+
+		If bReboot then  ' Reboot requested
+
+			' Set property to indicate a reboot is needed
+
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oLogging.CreateEntry "Set SMSTSRebootRequested to initiate a reboot.", LogTypeInfo
+
+			If bRetry then
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+				oLogging.CreateEntry "Set SMSTSRetryRequested to re-run script after reboot.", LogTypeInfo
+			End if
+
+		End if
+
+		Main = Success
+
+
+	End Function
+
+
+	Function ProcessVar(sVar, sType)
+
+		Dim sValue
+		Dim oItem
+		Dim oParent
+		Dim sParent
+
+		If oEnvironment.Item(sVar) = "" then
+			oLogging.CreateEntry "No items were specified in variable " & sVar & ".", LogTypeInfo
+		Else
+			oLogging.CreateEntry sType & "s specified in " & sType & ":", LogTypeInfo
+			For each sValue in Split(oEnvironment.Item(sVar), ",")
+
+				' Add any required parents for installs
+
+				If not bUninstall then
+
+					Set oItem = oServerManager.SelectSingleNode(".//" & sType & "[@Id='" & sValue & "']")
+					If not (oItem is Nothing) then
+						Set oParent = oItem.Attributes.getNamedItem("Parent")
+						If not (oParent is Nothing) then
+							For each sParent in Split(oParent.Value, ",")
+								If not dicItems.Exists(sParent) then
+									oLogging.CreateEntry "  " & sParent & " (Parent)", LogTypeInfo
+									dicItems.Add sParent, sType
+								End If
+							Next
+						End if
+					End if
+				End if
+
+
+				' Add the specified role
+
+				oLogging.CreateEntry "  " & sValue, LogTypeInfo
+				If not dicItems.Exists(sValue) then
+					dicItems.Add sValue, sType
+				End If
+			Next
+		End if
+
+	End Function
+
+
+	Function ProcessList(sMethod)
+
+		Dim iCount, iTotal, iPercent
+		Dim iErrors
+		Dim sKey
+		Dim oItem
+		Dim dicProcessedItems
+		Dim sVariableName
+
+
+		' Execute the appropriate method for each specified role
+
+		If bUninstall then
+			sVariableName = "UninstalledRoles"
+		Else
+			sVariableName = "InstalledRoles"
+		End if
+		Set dicProcessedItems = oEnvironment.ListItem(sVariableName)
+		iErrors = 0
+		bReboot = false
+
+		iCount = 0
+		iTotal = dicItems.Count
+		For each sKey in dicItems.Keys
+
+			iPercent = CInt(iCount * 100 / iTotal)
+			oLogging.ReportProgress "Processing " & sKey, iPercent
+			iCount = iCount + 1
+			oUtility.Heartbeat "ZTI Heartbeat: Processing roles (" & iPercent & "% complete"
+
+			If sKey = "ADDS" and (not bUninstall) Then
+				oLogging.CreateEntry "ADDS role does not need to be installed since DCPROMO will install it.", LogTypeInfo
+			ElseIf Trim(sKey) <> "" Then
+
+				If dicProcessedItems.Exists(UCase(Trim(sKey))) then
+					' Skip already processed role
+				Else
+
+					' Process the item using the appropriate method
+
+					Select Case sMethod
+					Case "CORE"
+						iErrors = iErrors + ProcessCoreRole(sKey)
+					Case "PS"
+						iErrors = iErrors + ProcessPSRole(sKey)
+					Case "DISM"
+						iErrors = iErrors + ProcessDismRole(sKey)
+					End Select
+
+
+					' Update the list of processed roles
+
+					dicProcessedItems.Add UCase(Trim(sKey)), ""
+					Set oEnvironment.ListItem(sVariableName) = dicProcessedItems
+
+
+					' Is the reboot flag set now?  If so, reboot now
+
+					If bReboot then
+
+						' We want to run again
+
+						bRetry = true
+						ProcessList = 0
+						Exit function
+
+					End if
+
+				End if
+
+    		        End If
+
+		Next
+
+		If iErrors > 0 then
+			oLogging.CreateEntry "One or more roles were not processed successfully", LogTypeInfo
+			ProcessList = Failure
+		Else
+			oLogging.CreateEntry "Role processing complete.", LogTypeInfo
+			If bReboot then
+				ProcessList = 3010
+			Else
+				ProcessList = Success
+			End if
+		End if
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	ProcessServer2k3Roles()
+	'//---------------------------------------------------------------------------
+	Function ProcessServer2k3Roles()
+
+		Dim iRetval
+		Dim strSystemroot
+		Dim objRoot
+		Dim osAnsFile
+		Dim sInfPath
+		Dim sAnsPath
+		Dim strComputer
+		Dim objReg
+		Dim strKeyPath
+		Dim strOSSource
+		Dim sCmd
+
+
+		' Log a warning if uninstall was requested
+
+		If bUninstall then
+			oLogging.CreateEntry "Uninstalling roles for Windows Server 2003 is not supported.", LogTypeWarning
+			ProcessServer2k3Roles = Success
+			Exit Function
+		End if
+
+
+		' Log that we are starting an install
+
+		oLogging.CreateEntry "Preparing to install roles for Windows Server 2003", LogTypeInfo
+
+
+		' Make sure source paths are set properly
+
+		On Error Resume Next
+		strOSSource = oShell.RegRead("HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Setup\SourcePath")
+		If Err then
+			oLogging.CreateEntry "OS Source path not set, unable to install roles.", LogTypeError
+			ProcessServer2k3Roles = Failure
+			EXIT FUNCTION
+		End if
+		oLogging.CreateEntry "Source Path = " & strOSSource, LogTypeInfo
+
+
+		' Build the answer file
+
+		oLogging.CreateEntry "Building Server 2003 answer file for SYSOCMGR", LogTypeInfo
+
+		sAnsPath = oEnv("TEMP") & "\OCAns.txt"
+		strSystemroot = oEnv("SYSTEMROOT")
+
+		sInfPath = strSystemroot & "\Inf\Sysoc.inf"
+
+		If (not oFSO.FileExists(sInfPath)) then
+			oLogging.CreateEntry "Unable to find " & sInfPath & ", unable to execute SYSOCMGR.", LogTypeError
+			ProcessServer2k3Roles = Failure
+			Exit Function
+		End if
+
+		Set osAnsFile = oFSO.CreateTextFile(sAnsPath,true,False)
+
+
+		' Write section name to the answer file
+
+		osAnsFile.WriteLine("[Components]")
+
+
+		' If any network roles are specified, enable network optional components
+
+		If dicItems.Exists("DNS") or dicItems.Exists("DHCP") or dicItems.Exists("WINS-Server") then
+			osAnsFile.Writeline("netoc = On")
+		End if
+
+
+		'  Install options for IIS server
+
+		If dicItems.Exists("Web-Server") then
+			osAnsFile.Writeline("iis_asp = on")
+			osAnsFile.Writeline("iis_common = on")
+			osAnsFile.Writeline("iis_inetmgr = on")
+			osAnsFile.Writeline("iis_www = on")
+			osAnsFile.Writeline("complusnetwork = on")
+			osAnsFile.Writeline("aspnet = on")
+		End if
+
+
+		' Install options for Teminal Server
+
+		If dicItems.Exists("Terminal-Services") then
+			osAnsFile.Writeline("TerminalServer = on")
+			osAnsFile.Writeline("LicenseServer = on")
+		End if
+
+
+		' Install options for Windows Deployment Services
+
+		If dicItems.Exists("WDS") then
+			osAnsFile.Writeline("reminst = on")
+		End if
+
+
+		' Network optional components
+
+		If dicItems.Exists("DNS") or dicItems.Exists("DHCP") or dicItems.Exists("WINS-Server") then
+			osAnsFile.Writeline("[NetOptionalComponents]")
+		End if
+
+
+		' Write net optional components to the answer file
+
+		If dicItems.Exists("DNS") then
+			osAnsFile.Writeline("DNS = 1")
+		End if
+		If dicItems.Exists("DHCP") then
+			osAnsFile.Writeline("DHCPServer = 1")
+		End if
+		If dicItems.Exists("WINS-Server") then
+			osAnsFile.Writeline("WINS = 1")
+		End if
+
+		osAnsFile.Close
+
+
+		' Execute SYSOCMGR
+
+		sCmd = "Sysocmgr.exe /i:""" & sInfPath & """ /u:""" & sAnsPath & """ /r"
+		oLogging.CreateEntry "About to execute command: " & sCmd, LogTypeInfo
+
+		On Error Resume Next
+		iRetval = oShell.Run(sCmd, 1, true)
+		If Err then
+			iRetVal = Err.Number
+			oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+		ElseIf iRetval <> 0 and iRetVal <> 3010 then
+			oLogging.CreateEntry "ERROR - Role installation with SYSOCMGR failed, rc = " & iRetVal, LogTypeError
+		Else
+			oLogging.CreateEntry "Roles Installation succeeded, rc = " & iRetVal, LogTypeInfo
+			If iRetVal = 3010 then
+				bReboot = true
+			End if
+		End if
+
+		ProcessServer2k3Roles = iRetval
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Process Roles using ServerManagerCmd
+	'//---------------------------------------------------------------------------
+
+	Function ProcessLHRoles()
+
+		Dim iRetVal
+		Dim oRolesXml
+		Dim sPath
+		Dim oRolenode
+		Dim sCmd
+		Dim sKey
+		Dim sAction
+
+
+		oLogging.CreateEntry "Preparing to process roles for Windows Server 2008 using ServerManagerCmd", LogTypeInfo
+
+
+		' Generate answer file
+
+		Set oRolesXml = oUtility.CreateXMLDOMObject
+		If bUninstall then
+			sAction = "Remove"
+		Else
+			sAction = "Install"
+		End if		
+		oRolesXml.LoadXML "<?xml version=""1.0"" encoding=""utf-8"" ?><ServerManagerConfiguration Action=""" & sAction & """ xmlns=""http://schemas.microsoft.com/sdm/Windows/ServerManager/Configuration/2007/1""></ServerManagerConfiguration>"
+
+		For each sKey in dicItems.Keys
+
+			Set oRolenode = oRolesXml.CreateNode("element", dicItems(sKey), "http://schemas.microsoft.com/sdm/Windows/ServerManager/Configuration/2007/1")
+			oRolenode.SetAttribute "Id", sKey
+			oRolesXml.documentElement.appendchild(oRolenode)
+			Set oRolenode = Nothing
+
+		Next
+
+		sPath = oUtility.LogPath  & "\Roles.xml"
+		oRolesXml.Save sPath
+		oLogging.CreateEntry "Saved role answer file to " & sPath, LogTypeInfo
+
+
+		' Find ServerManagerCmd.  First check sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), then system32, and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\ServerManagerCmd.exe") then
+			sCmd = oEnv("SystemRoot") & "\sysnative\ServerManagerCmd.exe"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\system32\ServerManagerCmd.exe") then
+			sCmd = oEnv("SystemRoot") & "\system32\ServerManagerCmd.exe"
+		Else
+			sCmd = "ServerManagerCmd.exe"
+		End if
+
+
+		' Execute the command
+			
+		sCmd = sCmd & " -inputpath """ & sPath & """ -LogPath " & oUtility.LogPath  & "\ServerMgr.log"
+		oLogging.CreateEntry "About to execute command: " & sCmd, LogTypeInfo
+
+		On Error Resume Next
+		iRetVal = oShell.Run(sCmd, 0, true)
+		If Err then
+			iRetVal = Err.Number
+			oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+		ElseIf iRetVal = 1003 then
+			oLogging.CreateEntry "Role processing with ServerManagerCmd.exe returned non-zero. 1003 = No change.", LogTypeInfo
+		ElseIf iRetVal <> 0 and iRetVal <> 3010 then
+			oLogging.CreateEntry "ERROR - Role processing with ServerManagerCmd.exe failed, rc = " & iRetVal, LogTypeError
+			If iRetVal = 1001 then
+				' Error indicates that a reboot is needed to back out changes.
+				' See http://technet.microsoft.com/en-us/library/cc749128(v=WS.10).aspx
+				bReboot = true
+			End if
+		Else
+			oLogging.CreateEntry "Roles processing succeeded, rc = " & iRetVal, LogTypeInfo
+			If iRetVal = 3010 then
+				bReboot = true
+			End if
+		End if
+		On Error Goto 0
+
+		ProcessLHRoles = iRetVal
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Process Server Core Role using OCSETUP
+	'//---------------------------------------------------------------------------
+
+	Function ProcessCoreRole(sRoleName)
+
+		Dim iRetval
+		Dim sCmd
+
+		iRetVal = 0
+
+
+		' Find OCSetup.exe.  First check sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), then system32, and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\OCSetup.exe") then
+			sCmd = oEnv("SystemRoot") & "\sysnative\OCSetup.exe"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\system32\OCSetup.exe") then
+			sCmd = oEnv("SystemRoot") & "\system32\OCSetup.exe"
+		Else
+			sCmd = "OCSetup.exe"
+		End if
+
+
+		' Process the specified role
+
+		sCmd = "cmd.exe /C " & sCmd & " " & sRoleName & " /norestart /quiet"
+		If bUninstall then
+			sCmd = sCmd & " /uninstall"
+		End if
+		oLogging.CreateEntry "About to execute command: " & sCmd, LogTypeInfo
+
+		On Error Resume Next
+		iRetVal = oShell.Run(sCmd, 0, true)
+		If Err then
+			iRetVal = 1
+			oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+		ElseIf iRetVal <> 0 and iRetVal <> 3010 then
+			oLogging.CreateEntry "ERROR - " & sRoleName & " role processing with OCSetup.exe failed, rc = " & iRetVal, LogTypeError
+		Else
+			oLogging.CreateEntry sRoleName & " role processing succeeded, rc = " & iRetVal, LogTypeInfo
+			If iRetVal = 3010 then
+				bReboot = true
+			End if
+		End if
+		On Error Goto 0
+
+		ProcessCoreRole = iRetval
+
+	End Function
+	
+
+
+	'//---------------------------------------------------------------------------
+	'//  Process Role or Feature using DISM
+	'//---------------------------------------------------------------------------
+
+	Function ProcessDismRole(sFeatureName)
+
+		Dim iRetval
+		Dim sCmd
+		Dim sSource
+
+		iRetVal = 0
+
+
+		' Find DISM.exe.  First check sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), then system32, and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\DISM.exe") then
+			sCmd = "cmd.exe /c " & oEnv("SystemRoot") & "\sysnative\DISM.exe"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\system32\DISM.exe") then
+			sCmd = "cmd.exe /c " & oEnv("SystemRoot") & "\system32\DISM.exe"
+		Else
+			sCmd = "cmd.exe /c DISM.exe"
+		End if
+
+
+		' Process the specified role
+
+		If bUninstall then
+			If UCase(oEnvironment.Item("CompletelyRemove")) = "TRUE" and Left(oEnvironment.Item("OSCurrentVersion"), 3) >= "6.2" then
+				sCmd = sCmd & " /Online /Disable-Feature /Remove /FeatureName:""" & sFeatureName & """"
+			Else
+				sCmd = sCmd & " /Online /Disable-Feature /FeatureName:""" & sFeatureName & """"
+			End if
+		Else
+			sCmd = sCmd & " /Online /Enable-Feature /FeatureName:""" & sFeatureName & """"
+			If Left(oEnvironment.Item("OSCurrentVersion"), 3) >= "6.2" then
+
+				' Specify source files if we can find them, otherwise assume the files can be pulled from WU or WSUS.
+				sSource = GetSource
+				If sSource <> "" then
+					sCmd = sCmd & " /Source:""" & sSource & """ /LimitAccess /All"
+				Else
+					sCmd = sCmd & " /All"
+				End if
+			End if
+		End if
+		sCmd = sCmd & " /NoRestart /logpath:" & oLogging.LogPath & "\ZTIOSRole_Dism.log"
+		sCmd = sCmd & " >> " & oLogging.LogPath & "\ZTIOSRole_DismConsole.log" 
+
+		oLogging.CreateEntry "About to execute command: " & sCmd, LogTypeInfo
+
+		On Error Resume Next
+		iRetVal = oShell.Run(sCmd, 0, true)
+		If Err then
+			iRetVal = 1
+			oLogging.CreateEntry "ERROR executing command " & sCmd & ": " & Err.Description & " (" & Err.Number & ")", LogTypeError
+		ElseIf iRetVal <> 0 and iRetVal <> 3010 then
+			If iRetVal = 50 Then
+				oLogging.CreateEntry "ERROR - " & sFeatureName & " role processing with DISM.exe failed. Parent feature needs to be installed before installing this feature. rc = " & iRetVal, LogTypeError
+			Else
+				oLogging.CreateEntry "ERROR - " & sFeatureName & " role processing with DISM.exe failed, rc = " & iRetVal, LogTypeError				
+			End If
+		Else
+			oLogging.CreateEntry sFeatureName & " role processing succeeded, rc = " & iRetVal, LogTypeInfo
+			If iRetVal = 3010 then
+				bReboot = true
+			End if
+		End if
+		On Error Goto 0
+
+		ProcessDismRole = iRetval
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Process Roles and Features using PowerShell
+	'//---------------------------------------------------------------------------
+
+	Function ProcessPSRole(sFeatureName)
+
+		Dim iRetval
+		Dim sCmd
+		Dim sSource
+
+		iRetVal = 0
+
+		' Install the specified role
+
+		If bUninstall then
+			If UCase(oEnvironment.Item("CompletelyRemove")) = "TRUE" and Left(oEnvironment.Item("OSCurrentVersion"), 3) >= "6.2" then
+				oEnvironment.Item("Parameters") = "-FeatureName " & sFeatureName & " -Uninstall -CompletelyRemove"
+			Else
+				oEnvironment.Item("Parameters") = "-FeatureName " & sFeatureName & " -Uninstall"
+			End if
+		Else
+			oEnvironment.Item("Parameters") = "-FeatureName " & sFeatureName
+			If Left(oEnvironment.Item("OSCurrentVersion"), 3) >= "6.2" then
+
+				' Specify source files if we can find them, otherwise assume the files can be pulled from WU or WSUS.
+				sSource = GetSource
+				If sSource <> "" then
+					oEnvironment.Item("Parameters") = oEnvironment.Item("Parameters") & " -Source """ & sSource & """"
+				End if
+			End if
+		End if
+		iRetVal = RunPowerShellScript("ZTIOSRolePS.ps1", true)
+		oEnvironment.Item("Parameters") = ""
+
+		If iRetVal <> 0 and iRetVal <> 3010 then
+			oLogging.CreateEntry "ERROR - " & sFeatureName & " role processing via PowerShell failed, rc = " & iRetVal, LogTypeError
+			If iRetVal = 1001 then
+				bReboot = true
+			End if
+		Else
+			oLogging.CreateEntry sFeatureName & " role processing succeeded, rc = " & iRetVal, LogTypeInfo
+			If iRetVal = 3010 then
+				bReboot = true
+			End if
+		End if
+		On Error Goto 0
+
+		ProcessPSRole = iRetval
+
+	End Function
+
+
+	Function GetSource
+
+		' By default, assume any needed files (e.g. NetFx3) can be loaded from WU or WSUS.
+
+		GetSource = ""
+
+
+		' If the user explicitly set WindowsSource, copy the files locally, 
+		' pass the value along via the source switch, and limit access to
+		' the internet.
+
+		If oEnvironment.Item("WindowsSource") <> "" then
+			oUtility.ValidateConnection oEnvironment.Item("WindowsSource")
+			If not oFSO.FolderExists(oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")) then
+				oLogging.CreateEntry "Copying source files locally from " & oEnvironment.Item("WindowsSource"), LogTypeInfo
+				oUtility.VerifyPathExists oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")
+				oFSO.CopyFolder oEnvironment.Item("WindowsSource"), oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture"), true
+			End if
+			GetSource = oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")
+
+		' If the SourcePath value was set (typically in LTI via ZTIUtility.vbs), 
+		' copy the files locally, pass that path along via the source switch,
+		' and limit access to the internet.
+
+		ElseIf oEnvironment.Item("SourcePath") <> "" then
+			oUtility.ValidateConnection oEnvironment.Item("SourcePath")
+			If not oFSO.FolderExists(oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")) then
+				If oFSO.FolderExists(oEnvironment.Item("SourcePath") & "\sources\sxs") then
+					oLogging.CreateEntry "Copying source files locally from " & oEnvironment.Item("SourcePath") & "\sources\sxs", LogTypeInfo
+					oUtility.VerifyPathExists oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")
+					oFSO.CopyFolder oEnvironment.Item("SourcePath") & "\sources\sxs", oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture"), true
+					GetSource = oUtility.LocalRootPath & "\sources\" & oEnvironment.Item("Architecture")
+				Else
+					oLogging.CreateEntry "SourcePath was set, but " & oEnvironment.Item("SourcePath") & "\sources\sxs does not exist, not using local source.", LogTypeInfo
+				End if
+			End if
+		End if
+
+	End Function
+
+End Class
+
+	</script>
+</job>

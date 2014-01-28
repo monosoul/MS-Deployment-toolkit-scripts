@@ -1,0 +1,405 @@
+<job id="LTISysprep">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIConfigFile.vbs"/>
+	<script language="VBScript" src="ZTIDataAccess.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      LTISysprep.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Sysprep the computer to prepare it for capture
+' // 
+' // Usage:     cscript.exe [//nologo] LTISysprep.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class LTISysprep
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+	' Global ConfigFile object
+	Dim oOSXMLDom
+	
+	' A dictionary object for all operating systems Guid,XMLDomNode
+	Dim oOperatingSystems
+
+	' an XMLDomNode object of the OS item selected
+	Dim oOS
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim oComputer
+		Dim sCmd
+		Dim iRetVal
+		Dim sFile
+		Dim sDeployCab
+		Dim sWinnt32
+		Dim oExec
+		Dim aCloneTag
+		Dim sSetupInProgress
+		Dim oAccount
+		Dim sUnattendXML
+		Dim sSourcePath
+		Dim sOSPPPath
+		Dim aPending
+
+
+		iRetVal = Success
+
+		'//----------------------------------------------------------------------------
+		'//  Validate that we're not in a domain
+		'//----------------------------------------------------------------------------
+
+		For each oComputer in objWMI.InstancesOf("Win32_ComputerSystem")
+			Select Case oComputer.DomainRole
+				Case 1, 3, 4, 5
+					oLogging.ReportFailure "Computer is a member of a domain, should be in a workgroup when sysprepping.", 7002
+					Exit function
+				Case else
+					oLogging.CreateEntry "Computer is not a member of a domain.", LogTypeInfo
+			End Select				
+		Next
+		
+
+		'//----------------------------------------------------------------------------
+		'//  Reboot if there are any pending file rename operations.
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("SysprepPendingFileRenameOperations") = "" then
+
+			oEnvironment.Item("SysprepPendingFileRenameOperations") = "OnlyRebootOnce"
+
+			on error resume next
+			aPending = oShell.RegRead("HKLM\System\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations")
+			on error goto 0 
+
+			If isEmpty(aPending) then
+				oLogging.CreateEntry "No Pending File Rename Operations (isEmpty).", LogTypeInfo
+
+			ElseIf not isArray(aPending) then
+				oLogging.CreateEntry "No Pending File Rename Operations (not isArray).", LogTypeInfo
+
+			Else
+				oLogging.CreateEntry "Possible Pending File Rename Operations.", LogTypeInfo
+
+				' Log any non-blank renames
+
+				For each sFile in aPending
+					If trim(sFile) <> "" then
+						oLogging.CreateEntry "Pending File Rename Operations: " & trim(sFile), LogTypeInfo
+						oEnvironment.Item("SMSTSRebootRequested") = "true"
+						oEnvironment.Item("SMSTSRetryRequested") = "true"
+					End if
+				next
+
+				If oEnvironment.Item("SMSTSRebootRequested") = "true" then
+					oLogging.CreateEntry "Initiating reboot to clear pending file rename operations.", LogTypeInfo
+					Main = Success
+					Exit Function
+				End if
+
+			End if
+
+		End if
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Clean up autologon registry entries before running Sysprep
+		'//----------------------------------------------------------------------------
+
+		oLogging.CreateEntry "Cleaning up Autologon registry values", LogTypeInfo
+
+		On Error Resume Next
+		oShell.RegWrite  "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\AutoAdminLogon", "0", "REG_SZ"
+		oShell.RegWrite  "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultUserName", "", "REG_SZ"
+		oShell.RegWrite  "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultDomainName", "", "REG_SZ"
+		oShell.RegDelete "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultPassword"
+		oShell.RegWrite  "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\AutoLogonCount", &H00000000, "REG_DWORD"
+		
+		oShell.RegDelete "HKEY_LOCAL_MACHINE\System\Setup\CloneTag"
+		oShell.RegWrite  "HKEY_LOCAL_MACHINE\System\Setup\SystemSetupInProgress", 0, "REG_DWORD"
+		
+		On Error Goto 0
+
+
+		'//----------------------------------------------------------------------------
+		'//  Rearm Office 2010 if it is present
+		'//----------------------------------------------------------------------------
+
+		If not UCase(oEnvironment.Item("SkipRearm")) = "YES" then
+			For each sOSPPPath in Array(oEnvironment.Substitute("%ProgramFiles%\Common Files\microsoft shared\OfficeSoftwareProtectionPlatform\OSPPREARM.EXE"), oEnvironment.Substitute("%ProgramFiles(x86)%\Common Files\microsoft shared\OfficeSoftwareProtectionPlatform\OSPPREARM.EXE"))
+				If oFSO.FileExists(sOSPPPath) then
+
+					oLogging.CreateEntry "Re-arming Office 2010 activation", LogTypeInfo
+					iRetVal = oUtility.RunWithConsoleLogging("""" & sOSPPPath & """")
+					If iRetVal = 0 then
+						oLogging.CreateEntry "Re-armed Office 2010 successfully.", LogTypeInfo
+					Else
+						oLogging.CreateEntry "Unexpected return code while re-arming Office 2010, RC = " & iRetVal, LogTypeWarning
+					End if
+
+				End if
+
+			Next
+		Else
+			oLogging.CreateEntry "Re-arming skipped by user request.", LogTypeInfo
+		End if
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Prepare for running Sysprep
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("OSCurrentBuild") >= "6000" then
+
+			' Copy unattend.xml where Sysprep can find it
+			If oEnvironment.Item("OSDAnswerFilePath") = "" Then
+				iRetVal = oUtility.FindUnattendAnswerFile
+				TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+			End If
+			IF oFSO.FileExists(oEnvironment.Item("OSDAnswerFilePath")) = False Then
+				iRetVal = oUtility.FindUnattendAnswerFile
+				TestAndFail iRetVal, 7001, "Looking for unattend AnswerFile"
+				
+			End If
+			If Instr(1,oEnvironment.Item("OSDAnswerFilePath"),".xml",vbTextCompare) >0 then
+				sUnattendXML = oEnvironment.Item("OSDAnswerFilePath")
+			End If			
+				
+			If oFSO.FileExists(sUnattendXML) then
+
+				If oFSO.FolderExists(oEnv("SystemRoot") & "\system32\sysprep") then
+					oLogging.CreateEntry "Copying " & sUnattendXML & " to " & oEnv("SystemRoot") & "\system32\sysprep\unattend.xml", LogTypeInfo
+					oFSO.CopyFile sUnattendXML, oEnv("SystemRoot") & "\system32\sysprep\unattend.xml", true
+				Else
+					oLogging.CreateEntry "Unable to copy unattend.xml for Sysprep, " & oEnv("SystemRoot") & "\system32\sysprep folder not found", LogTypeWarning
+				End if
+
+				Else
+					oLogging.CreateEntry "Unable to copy unattend.xml for Sysprep, " & sUnattendXML & " not found", LogTypeWarning
+			End if
+
+		Else
+
+			oLogging.CreateEntry "Making sure required Sysprep files are present", LogTypeInfo
+
+
+			' Make sure the C:\Sysprep directory exists and that it contains sysprep.inf
+
+			oUtility.VerifyPathExists "C:\Sysprep"
+			If not oFSO.FileExists("C:\Sysprep\sysprep.inf") then
+
+				If oFSO.FileExists(oEnvironment.Item("DeployRoot") & "\Control\" & oEnvironment.Item("TaskSequenceID") & "\Sysprep.inf") then
+					oLogging.CreateEntry "Copying " & oEnvironment.Item("DeployRoot") & "\Control\" & oEnvironment.Item("TaskSequenceID") & "\Sysprep.inf to C:\Sysprep\Sysprep.inf", LogTypeInfo
+					oFSO.CopyFile oEnvironment.Item("DeployRoot") & "\Control\" & oEnvironment.Item("TaskSequenceID") & "\Sysprep.inf", "C:\Sysprep\Sysprep.inf", true
+				Else
+					oLogging.CreateEntry "Unable to find Sysprep.inf, image deployment may not be automated", LogTypeWarning
+				End if
+			End if
+
+			
+
+			set oOSXMLDom =  new ConfigFile
+			oOSXMLDom.sFileType = "OperatingSystems"
+					
+			set oOperatingSystems = oOSXMLDom.FindItems
+					
+			TestAndFail oOperatingSystems.exists(oEnvironment.Item("OSGUID")), 5601,"Verify OS guid: %OSGUID% exists."
+			set oOS = oOperatingSystems.Item(oEnvironment.Item("OSGUID"))
+			TestAndFail not(oOS is Nothing), 5602, "Open XML with OSGUID: %OSGUID%"
+
+			sSourcePath = oUtility.SelectSingleNodeString(oOS,"Source")
+			If Left(sSourcePath, 1) = "." then
+				sSourcePath = oEnvironment.Item("DeployRoot") & Mid(sSourcePath, 2)
+			End if
+			If not oFSO.FolderExists(sSourcePath) then
+				oUtility.ValidateConnection sSourcePath
+			End if
+			oEnvironment.Item("SourcePath") = sSourcePath
+
+				
+
+			' Build the path to DEPLOY.CAB (and WINNT32.exe for comparison) in case we need to grab the Sysprep files from it
+
+			If oFSO.FileExists(oEnvironment.Item("SourcePath") & "\DEPLOY.CAB") then
+				sDeployCab = oEnvironment.Item("SourcePath") & "\DEPLOY.CAB"
+			Else
+				sDeployCab = oEnvironment.Item("SourcePath") & "\SUPPORT\TOOLS\DEPLOY.CAB"
+			End if
+
+			If UCase(oEnvironment.Item("Architecture")) = "X64" then
+				sWinnt32 = oEnvironment.Item("SourcePath") & "\amd64\winnt32.exe"
+			Else
+				sWinnt32 = oEnvironment.Item("SourcePath") & "\i386\winnt32.exe"
+			End if
+
+
+			' See if the Sysprep files already exist (e.g. copied by a build or OS-specific $OEM$\$1\Sysprep directory)
+
+			For each sFile in Array("sysprep.exe", "setupcl.exe", "factory.exe")
+
+				' Try to copy it from the source directory first
+
+
+				If oFSO.FileExists(oEnvironment.Item("SourcePath") & "\" & sFile) then
+					oLogging.CreateEntry "Copying " & oEnvironment.Item("SourcePath") & "\" & sFile & " to " & oEnv("SystemDrive") & "\Sysprep\" & sFile, LogTypeInfo
+					oFSO.CopyFile oEnvironment.Item("SourcePath") & "\" & sFile, oEnv("SystemDrive") & "\Sysprep\" & sFile, true
+				End if
+
+
+
+				' If it is still not there, try to extract it from the CAB file
+
+
+
+				' Sanity check: Make sure the DEPLOY.CAB is at least as new as WINNT32.exe
+				TestAndFail oFSO.FileExists(sDeployCab), 6101, "Check for file: " & sDeployCab 
+
+				If not oFSO.FileExists(sWinnt32) then
+					oLogging.CreateEntry "Warning: The " & sWinnt32 & " is not available.  Unable to ensure Sysprep files are the right version.", LogTypeWarning
+				ElseIf DateDiff("d", oFSO.GetFile(sWinnt32).DateLastModified, oFSO.GetFile(sDeployCab).DateLastModified) < 0 then
+					oLogging.CreateEntry "Error: The " & sDeployCab & " file is older than the Windows source files (" & sWinnt32 & ").  Using older versions of Sysprep is not supported.  Ensure that you have the appropriate version.", LogTypeError
+					main = Failure
+					Exit Function
+				End if
+
+
+				' Extract the file from the DEPLOY.CAB
+				sCmd = "expand """ & sDeployCab & """ -F:" & sFile & " " & oEnv("SystemDrive") & "\Sysprep"
+				iRetVal = oUtility.RunWithHeartbeat ( sCmd )
+				TestAndFail iRetVal, 6102, "expand Sysprep files from DEPLOY.CAB."
+
+
+			Next
+
+		End if
+
+
+		' Clean up the shortcut and RunOnce item (if they exist)
+
+		If oFSO.FileExists(oShell.SpecialFolders("AllUsersStartup") & "\LiteTouch.lnk") then
+			oFSO.DeleteFile oShell.SpecialFolders("AllUsersStartup") & "\LiteTouch.lnk"
+		End if
+
+		On Error Resume Next
+		oShell.RegDelete "HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce\LiteTouch"
+		On Error Goto 0
+
+
+		' If we're only supposed to prepare for capturing (e.g. going to capture using OSD), then end now.
+
+		If oEnvironment.Item("DoCapture") = "PREPARE" then
+
+			oLogging.CreateEntry "Done preparing for Sysprep execution.", LogTypeInfo
+			main = Success
+			Exit Function
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Run the appropriate Sysprep based on the OS version
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("OSCurrentBuild") >= "6000" then
+
+			' Run sysprep
+
+			sCmd = oEnv("SystemRoot") & "\system32\sysprep\sysprep.exe /quiet /generalize /oobe /quit"
+			If oFSO.FileExists(oEnv("SystemRoot") & "\system32\sysprep\unattend.xml") then
+				sCmd = sCmd & " /unattend:" & oEnv("SystemRoot") & "\system32\sysprep\unattend.xml"
+			End if
+			iRetVal = oUtility.RunWithHeartbeat(sCmd)
+			TestAndFail iRetVal, 6111, "Run Sysprep.exe."
+			
+			If oFSO.FileExists(oEnv("SystemRoot") & "\system32\sysprep\unattend.xml") then
+				oFSO.DeleteFile oEnv("SystemRoot") & "\system32\sysprep\unattend.xml", true
+			End if
+
+		Else
+
+			' Reset the administrator password to blank.  (This might fail if policy prohibits it, but we'll log the failure.)
+
+			On Error Resume Next
+			Set oAccount = GetObject("WinNT://./" & oEnv("USERNAME"))
+			If Err then
+				oLogging.CreateEntry "Unable to retrieve local account .\" & oEnv("USERNAME") & ", unable to reset password to blank: " & Err.Description & " (" & Err.Number & ")", LogTypeWarning
+			Else
+				oLogging.CreateEntry "Succcessfully retrieved local account .\" & oEnv("USERNAME"), LogTypeInfo
+				oAccount.SetPassword ""
+				TestAndLog Err = 0, "Set the current local account password to blank."
+			End if
+			On Error Goto 0
+			Err.Clear
+
+
+			' Execute Sysprep
+
+			oLogging.CreateEntry "Initiating " & oEnv("SystemDrive") & "\sysprep\sysprep.exe -reseal -quiet -mini -noreboot", LogTypeInfo
+			Set oExec = oShell.Exec(oEnv("SystemDrive") & "\sysprep\sysprep.exe -reseal -quiet -mini -noreboot")
+			Do While oExec.Status = 0
+
+				WScript.Sleep 2000
+				On Error Resume Next
+				oShell.AppActivate "Sysprep"
+				oShell.SendKeys "{HOME}"
+				On Error Goto 0
+
+			Loop
+
+			iRetVal = oExec.ExitCode
+			TestAndFail iRetVal, 6121, "Run Sysprep."
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Validate that Sysprep really did succeeed
+		'//----------------------------------------------------------------------------
+
+		aCloneTag = empty
+		On Error Resume Next
+		aCloneTag = oShell.RegRead("HKEY_LOCAL_MACHINE\System\Setup\CloneTag")
+		TestAndFail not IsEmpty(aCloneTag),6191, "Test for CloneTag in registry to verify Sysprep completed."
+		oLogging.CreateEntry "Contents of CloneTag(0): " & aCloneTag(0), LogTypeInfo
+		On Error Goto 0
+
+		sSetupInProgress = empty
+		On Error Resume Next
+		sSetupInProgress = oShell.RegRead("HKEY_LOCAL_MACHINE\System\Setup\SystemSetupInProgress")
+		TestAndFail not IsEmpty(sSetupInProgress),6192, "Test for SystemSetupInProgress in registry to verify Sysprep completed."
+		oLogging.CreateEntry "SystemSetupInProgress is set to " & sSetupInProgress, LogTypeInfo
+		On Error Goto 0
+
+		Main = iRetVal
+
+	End Function
+
+
+End class
+
+
+	</script>
+</job>
+
+

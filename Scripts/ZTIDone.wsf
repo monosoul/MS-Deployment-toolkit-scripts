@@ -1,0 +1,29 @@
+<job id="ZTIDone">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript" src="ZTIDataAccess.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIDone.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Report that the task sequence is done (successfully)
+' // 
+' // Usage:     cscript ZTIDone.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+
+	' Do not use a standard class because that would generate other events after this one
+
+	oLogging.CreateEvent 41015, LogTypeInfo, "ZTI deployment completed successfully", Array("0")
+	WScript.Quit 0
+
+   </script>
+</job>

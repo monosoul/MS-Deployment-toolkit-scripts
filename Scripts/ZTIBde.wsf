@@ -1,0 +1,1416 @@
+<job id="ZTIBde">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript" src="ZTIDiskUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIBDE.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install and configure Bitlocker Drive Encryption
+' // 
+' // Usage:     cscript ZTIBde.wsf [/debug:true] [/UDI]
+' // 
+' // ***************************************************************************
+
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//
+'//  Global constants
+'//
+'//----------------------------------------------------------------------------
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIBDE
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+	
+	Public oTpm, oBde, oBdeVol
+	Public bTpmActivated, bTpmOwned, bTpmEnabled, bTpmOwnershipAllowed, bEndorsementKeyPairPresent
+	Public sRemovableDriveLetter, sVolProtectorId, sPasswordFile
+	Public sOSDBitLockerMode, sOSDBitLockerStartupKeyDrive, sOSDBitLockerTargetDrive, sOSDBitLockerCreateRecoveryPassword
+	Public sOSDBitLockerRecoveryPassword, sOSDBitLockerStartupKey, sBdePin
+	Public sBdeDriveLetter	
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal, iFreeSpace
+		Dim sBdeHdTool
+		Dim bDriveChange
+		Dim sExistingBdeDrive
+		Dim sOSDBitLockerWaitForEncryption		
+		Dim sBdeInstallSuppress	
+		Dim iPartitionCount
+		Dim sSecondPass
+		Dim iValidateConnection
+		Dim objWMIBDE, colEnVol, objEncVol, ColPS
+		DIm strStatusData, sEncryptionProgress, sCDriveEncryptionStatus, strConnectionStr1
+		Dim sSystemDrive
+
+		iRetVal = Success
+		sSystemDrive = oEnv("SystemDrive")
+		oLogging.CreateEntry "System drive is: " & sSystemDrive, LogTypeInfo
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Check to see if BDE install is supressed
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentMethod") = "SCCM" Then
+			oLogging.CreateEntry "The deployment method is using ConfigMgr.", LogTypeInfo
+			oEnvironment.Item("BdeInstallSuppress") = "NO"
+		Else
+			oLogging.CreateEntry "The deployment method is not using ConfigMgr.", LogTypeInfo
+		End If
+		
+		If oEnvironment.Item("BdeInstallSuppress") <> "NO" and UCase(oEnvironment.Item("IsBDE")) <> "TRUE" Then
+			oLogging.CreateEntry "BDE installation not selected", LogTypeInfo
+			Main = iRetVal
+			EXIT FUNCTION
+		End If
+		
+		
+		'//----------------------------------------------------------------------------
+		'//  Check to see if we are running in WinPE and if the OS supports 
+		'//  Offline BitLocker
+		'//----------------------------------------------------------------------------
+
+		If (oEnv("SystemDrive") = "X:") and(UCASE(oEnvironment.Item("BDEDisablePreProvisioning")) <> "YES") and (UCASE(oEnvironment.Item("DoNotCreateExtraPartition")) <> "TRUE") then 
+			
+			oLogging.CreateEntry "We are in a Windows PE environment, checking to see if Windows PE supports Offline BitLocker tasks.", LogTypeInfo
+			oLogging.CreateEntry "Determining if WinPE supports pre-provisioning", LogTypeInfo
+			If oFSO.FileExists(oEnv("SystemRoot") & "\system32\Manage-bde.exe")  and (UCASE(oEnvironment.Item("OSCurrentVersion")) >= "6.2") then
+				oLogging.CreateEntry "Found Offline BitLocker Tools.", LogTypeInfo
+			Else
+				oLogging.CreateEntry "Unable to find offline BitLocker tools, exiting Windows PE Bitlocker task.", LogTypeInfo
+				Main = Success
+				Exit Function
+			End if
+			
+			oLogging.CreateEntry "Checking to see if OS supports Offline Bitlocker.", LogTypeInfo
+			
+			If UCase(oEnvironment.Item("IsBDE")) = "TRUE" then
+				oLogging.CreateEntry "BitLocker is suspended, pre-provisioning is not required.", LogTypeInfo
+			ElseIf ((oEnvironment.Item("ImageBuild") >= "6.1") or (oEnvironment.Item("ImageOSVer") >= "6.1")) then 
+				oLogging.CreateEntry "OS build supports Offline BitLocker.", LogTypeInfo
+				If TpmValidate = SUCCESS then
+					oLogging.CreateEntry "TPM is validated.", LogTypeInfo
+					oLogging.CreateEntry "Pre-provisioning BitLocker on drive " & oUtility.GetOSTargetDriveLetter, LogTypeInfo
+					oUtility.RunWithHeartbeat """" & oEnv("SystemRoot") & "\system32\Manage-bde.exe"" -on " & oUtility.GetOSTargetDriveLetter & " -used"
+					oEnvironment.Item("IsBDEPreProvisioned") = oUtility.ConvertBooleanToString(true)
+				Else
+					oLogging.CreateEntry "TPM not validated, offline BitLocker is not possible.", LogTypeInfo
+				End if
+			Else
+				oLogging.CreateEntry "Unable to perform Offline BitLocker tasks for this deployment.", LogTypeInfo
+			End if
+			Main = Success
+			Exit Function
+		Else 
+			oLogging.CreateEntry "This script is not currently running in Windows PE", LogTypeInfo
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Check to see if BDE is supported in this OS
+		'//----------------------------------------------------------------------------	
+		
+		'// Check to see if we are running Vista or later and exit if we are not
+		If Left(oEnvironment.Item("OSCurrentVersion"),1) < 6 Then
+			oLogging.CreateEntry "Bitlocker is not supported on this version of Windows", LogTypeInfo
+			Main = iRetVal
+			Exit Function
+		'// Check to see if the SKU supportes Bitlocker
+		ElseIf not oUtility.IsHighEndSKU then
+			oLogging.CreateEntry "Bitlocker is only supported on Windows Enterprise or Windows Ultimate or Windows Server", LogTypeInfo
+			Main = iRetVal
+			Exit Function
+		Else
+			oLogging.CreateEntry "We are running a OS that supports BitLocker", LogTypeInfo
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'// Determine whether this is an OS encryption or a data drive
+		'// encryption request.
+		'//----------------------------------------------------------------------------
+		
+		'// Select target drive otherwise use system drive  
+		If oEnvironment.Item("OSDBitLockerTargetDrive") <> "" Then
+			sOSDBitLockerTargetDrive = oEnvironment.Item("OSDBitLockerTargetDrive")
+		ElseIf oEnvironment.Item("OSDBdeTargetDriveLetter") <> "" Then
+			sOSDBitLockerTargetDrive = oEnvironment.Item("OSDBdeTargetDriveLetter")
+		Else
+			sOSDBitLockerTargetDrive = sSystemDrive
+		End If
+
+		oLogging.CreateEntry "OSDBitLockerTargetDrive= " & oEnvironment.Item("OSDBitLockerTargetDrive") & ", OSDBdeTargetDriveLetter= " & oEnvironment.Item("OSDBdeTargetDriveLetter") & ", sOSDBitLockerTargetDrive= " & sOSDBitLockerTargetDrive, LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------		
+		'//  If Refreshing to Windows 7, Enable the protectors and upgrade the volume
+		'//----------------------------------------------------------------------------
+
+		If UCase(oEnvironment.Item("IsBDE")) = "TRUE" and UCase(oEnvironment.Item("IsBDEPreProvisioned")) <> "TRUE" then
+			oLogging.CreateEntry "This is a Refresh Build where BDE protectors were disabled.", LogTypeInfo
+			oLogging.CreateEntry "OS Version is Windows 7 or higher.", LogTypeInfo
+			iRetVal = EnableProtectors()
+			Exit Function
+		End if		
+		
+					
+		'//----------------------------------------------------------------------------
+		'//  Perform variable match up to support both SCCM variable set 
+		'//  preexisting (BDD2007) variable naming convention. Wizard variables have 
+		'//  priority
+		'//----------------------------------------------------------------------------
+
+		oLogging.CreateEntry "About to perform variable rationalization.", LogTypeInfo
+		
+		'// Determine BitLocker Mode
+		sOSDBitLockerMode = oEnvironment.Item("BdeInstall")
+		If sOSDBitLockerMode = "" Then
+			sOSDBitLockerMode = oEnvironment.Item("OSDBitLockerMode")
+			If oEnvironment.Item("OSDBitLockerTargetDrive") = "" or sOSDBitLockerTargetDrive = sSystemDrive Then
+				If sOSDBitLockerMode = ""  and oEnvironment.Item("DeploymentMethod") <> "SCCM" Then
+					oLogging.CreateEntry "BDE installation not selected", LogTypeInfo
+					Main = iRetVal
+					EXIT FUNCTION
+				End If
+			End If
+		End If
+		oLogging.CreateEntry "BitLocker Mode set to: " & sOSDBitLockerMode, LogTypeInfo
+		
+		'//	Determine BitLocker Startup Key Drive Value
+		sOSDBitLockerStartupKeyDrive = oEnvironment.Item("BdeKeyLocation")
+		If sOSDBitLockerStartupKeyDrive = "" Then	
+			sOSDBitLockerStartupKeyDrive = oEnvironment.Item("OSDBitLockerStartupKeyDrive")
+			'// Try to find a removable drive first.
+			If sOSDBitLockerStartupKeyDrive = "" Then		
+				sOSDBitLockerStartupKeyDrive = GetRemovableDrive()
+				'// Last case, default to first available.
+				If sOSDBitLockerStartupKeyDrive = "" or sOSDBitLockerStartupKeyDrive = Failure  Then
+					sOSDBitLockerStartupKeyDrive = sSystemDrive		
+				End If
+			End If
+		End If
+		oLogging.CreateEntry "BitLocker Startup Key Drive Value set to: " & sOSDBitLockerStartupKeyDrive, LogTypeInfo
+
+		'//	Determine BitLocker Create Recovery Password Status - Used in AD
+		sOSDBitLockerCreateRecoveryPassword = oEnvironment.Item("BdeRecoveryKey")
+		If sOSDBitLockerCreateRecoveryPassword = "" Then	
+			sOSDBitLockerCreateRecoveryPassword = oEnvironment.Item("OSDBitLockerCreateRecoveryPassword")
+		End If
+		oLogging.CreateEntry "BitLocker Create Recovery P@ssword Status: " & sOSDBitLockerCreateRecoveryPassword, LogTypeInfo
+
+		'//	Determine BitLocker Wait For Encryption settings
+		sOSDBitLockerWaitForEncryption = Ucase(oEnvironment.Item("BdeWaitForEncryption"))
+		If sOSDBitLockerWaitForEncryption = "" Then		
+			sOSDBitLockerWaitForEncryption = Ucase(oEnvironment.Item("OSDBitLockerWaitForEncryption"))		
+		End If
+		oLogging.CreateEntry "BitLocker Wait For Encryption Status set to: " & sOSDBitLockerWaitForEncryption, LogTypeInfo
+		
+		'// Determine BitLocker Recovery Password
+		sOSDBitLockerRecoveryPassword = oEnvironment.Item("OSDBitLockerRecoveryPassword")
+		If sOSDBitLockerRecoveryPassword <> "" Then	
+			If Len(sOSDBitLockerRecoveryPassword) < 48 Then			
+				oLogging.CreateEntry "OSDBitLockerRecoveryP@ssword appears invalid. P@ssword must contain 48 numbers.", LogTypeError
+				Main = iRetVal
+				EXIT FUNCTION				
+			End If			
+		End If
+		oLogging.CreateEntry "BitLocker Recovery P@ssword set.", LogTypeInfo
+		
+		'//sOSDBitLockerStartupKey
+		sOSDBitLockerStartupKey = oEnvironment.Item("OSDBitLockerStartupKey")
+		
+		'//sBdePin
+		sBdePin = oEnvironment.Item("BdePin")
+
+		
+		'//----------------------------------------------------------------------------
+		'//  If this is Windows Server then make sure that BitLocker role is installed
+		'//----------------------------------------------------------------------------
+
+		If (Left(oEnvironment.item("OSCurrentVersion"),1)) >= 6 and (oEnvironment.Item("IsServerOS"))Then
+
+			Dim sCmd, colServerFeature
+		
+			oLogging.CreateEntry "This is a Server OS. Checking if the correct roles are installed.", LogTypeInfo
+
+			' Try to find the existing feature
+
+			On Error Resume Next
+			Set colServerFeature = objWMI.ExecQuery("Select * from Win32_ServerFeature where ID=61")
+			On Error Goto 0
+
+
+			' If it isn't found and we haven't tried to install it already, install it now
+
+			If colServerFeature.Count = 0 and oEnvironment.Item("BitlockerInstalled") <> "true" Then
+
+				oLogging.CreateEntry "The BitLocker feature is not installed on this server. Adding feature.", LogTypeInfo
+
+
+				' Build the command to install the BitLocker feature
+
+				If Left(oEnvironment.Item("OSCurrentVersion"), 3) = "6.0" then
+
+					' Use ServerManagerCmd.exe or OCSetup.exe to install the feature
+
+					If UCase(oEnvironment.Item("IsServerCoreOS")) = "TRUE" then
+						sCmd = "ocsetup.exe BitLocker /NoRestart"
+					Else
+						sCmd = "ServerManagerCmd.exe -install BitLocker"
+					End if
+						
+				Else
+					' Use DISM to install the feature.  Add /all for Windows 8 to get
+					' any required dependencies (e.g. enhanced storage).
+	
+					sCmd = "dism.exe /online /enable-feature /featurename:BitLocker"
+					If Left(oEnvironment.Item("OSCurrentVersion"), 3) >= "6.2" then
+						sCmd = sCmd & " /all"
+					End if
+					sCmd = sCmd & " /NoRestart"
+				End if
+
+
+				' Run the command
+
+				iRetVal = oUtility.RunWithConsoleLogging(sCmd)
+
+
+				' Reboot and try again
+
+				oLogging.CreateEntry "Setting up for reboot before continuing BitLocker process", LogTypeInfo
+				oEnvironment.Item("BitlockerInstalled") = "true"
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+				oEnvironment.Item("SMSTSRebootRequested") = "true"
+				Main = Success
+				Exit Function
+				
+			ElseIf colServerFeature.Count = 0 then
+				oLogging.CreateEntry "WARNING: BitLocker feature is still not present, failures may occur.", LogTypeWarning
+			End If	
+			
+		End If
+
+		
+		'//----------------------------------------------------------------------------
+		'// Perform data drive encryption
+		'//----------------------------------------------------------------------------		
+
+		If sSystemDrive <> ucase(sOSDBitLockerTargetDrive) Then
+		
+			oLogging.CreateEntry "This is a data drive encryption.", LogTypeInfo
+			If sOSDBitLockerStartupKeyDrive = "" Then
+				sOSDBitLockerStartupKeyDrive = sSystemDrive
+				oLogging.CreateEntry "Setting startup key drive to: "  & sOSDBitLockerStartupKeyDrive, LogTypeInfo
+			End If
+			
+			If sOSDBitLockerMode = "" or ucase(sOSDBitLockerTargetDrive) <> sSystemDrive Then
+				sOSDBitlockerMode = "KEY"
+				oLogging.CreateEntry "Setting key mode to: "  & sOSDBitlockerMode, LogTypeInfo
+			End IF
+
+			oLogging.CreateEntry "Configuring Protectors: " & sOSDBitLockerStartupKeyDrive, LogTypeInfo
+			iRetval = ConfigureProtectors()
+
+			oLogging.CreateEntry "Data drive encryption requested. Drive:" & sOSDBitLockerTargetDrive, LogTypeInfo
+			iRetVal = EncryptDataDrive()
+			
+			'// wait for encryption to complete.
+			If sOSDBitLockerWaitForEncryption = "TRUE" Then
+				oLogging.CreateEntry "Begining the wait for drive encryption to complete. This can take a signifigant amount of time.", LogTypeInfo
+				WaitForEncryptionCompletion
+			End If
+			
+			Main = iRetVal
+			Exit Function
+		
+		End If
+
+		'//----------------------------------------------------------------------------
+		'//  Determine BDE drive letter
+		'//----------------------------------------------------------------------------			
+		
+		If Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.1" and GetBootDrive = Failure Then	
+			oLogging.CreateEntry "Setting BDE Drive letter to nothing as we are unable to get the boot drive.", LogTypeInfo
+			oEnvironment.Item("BdeDriveLetter") = ""
+		ElseIf oEnvironment.Item("BdeDriveLetter") = "" Then
+			oLogging.CreateEntry "BDE Drive letter not defined setting to S:", LogTypeInfo		
+			sBdeDriveLetter = "S:"		
+		Else
+			oLogging.CreateEntry "BDE Drive letter is: " & sBdeDriveLetter, LogTypeInfo	
+			sBdeDriveLetter = oEnvironment.Item("BdeDriveLetter")			
+		End If
+
+
+		'//----------------------------------------------------------------------------				
+		'//  Perform BDE drive configuration only for both NewComputer and Upgrades with
+		'//  a single partition
+		'//----------------------------------------------------------------------------		
+		
+		If oEnvironment.Item("BdeSecondPass") <> "YES" Then
+
+			oLogging.CreateEntry "Running first pass..", LogTypeInfo
+
+			iPartitionCount = GetDiskPartitionCount(0)
+			oLogging.CreateEntry vbTab & "    Partition Count: " & iPartitionCount, LogTypeInfo
+			iFreeSpace = GetDiskFreeSpace(0)
+			oLogging.CreateEntry vbTab & "    Free Disk Space: " & iFreeSpace, LogTypeInfo
+			sExistingBdeDrive = GetExistingBdeDrive() 
+			oLogging.CreateEntry vbTab & " Existing Bitlocker: " & sExistingBdeDrive, LogTypeInfo
+			oLogging.CreateEntry vbTab & "Existing Boot Drive: " & GetBootDrive, LogTypeInfo
+
+			If sExistingBdeDrive <> "" Then
+
+				If ucase(sExistingBdeDrive) <> ucase(sBdeDriveLetter) Then
+				
+					oLogging.CreateEntry "An existing BDE partition was found at an unknown drive letter", LogTypeInfo
+					oLogging.CreateEntry "Attempting to change existing BDE drive letter to " & sBdeDriveLetter, LogTypeInfo
+					SetBdeDriveMapping(sBdeDriveLetter)
+					iPartitionCount = GetDiskPartitionCount(0)  ' Display the new drive letter assignment
+					WScript.Sleep 10000   ' Sleep 10 seconds after changing the drive mapping
+
+				End If
+				
+				If GetBootDrive = sExistingBdeDrive Then
+					oLogging.CreateEntry "Existing System Drive found, no need to mark active", LogTypeInfo
+					bDriveChange = False
+				Else
+					oLogging.CreateEntry "Found existing BDE Drive at " & sBdeDriveLetter, LogTypeInfo
+					oLogging.CreateEntry "Attempting to merge", LogTypeInfo
+					iRetVal = MarkActive(sBdeDriveLetter)
+					iRetVal = RunBCDBoot()
+					TestAndFail iRetVal, 6702, "Moved boot files "
+					bDriveChange = True
+				End If
+				
+			ElseIf Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.1" and GetBootDrive = Failure Then
+			
+				oLogging.CreateEntry "Windows has a hidden system partition, no disk actions are necessary",LogTypeInfo
+				bDriveChange = False
+				
+			ElseIf iFreeSpace > 2048 Then
+			
+				oLogging.CreateEntry "Creating BDE Partion with unallocated disk space.", LogTypeInfo
+				iRetVal = CreateBdeDrive(sBdeDriveLetter)
+				iRetVal = RunBCDBoot()
+				TestAndFail iRetVal, 6703, "Create BDE Partition "
+				bDriveChange = True
+				
+			ElseIf iPartitionCount = 1 Then
+			
+				oLogging.CreateEntry "Single partition found. Attempting to shrink to create BDE Drive", LogTypeInfo
+				iRetVal = DefragDrive(sSystemDrive)
+				TestAndFail iRetVal, 6704, "Degragment Drive "
+				iRetVal = ShrinkDrive(sSystemDrive,sBDEDriveLetter)
+				TestAndFail iRetVal, 6705, "Shrink Drive "
+
+				iPartitionCount = GetDiskPartitionCount(0)
+				
+				TestAndFail iPartitionCount >= 2, 6706, "Testing for more than 1 partition "
+
+				iRetVal = MarkActive(sBDEDriveLetter)
+				iRetVal = RunBCDboot()
+				TestAndFail iRetVal, 6707, "Create boot files "
+				bDriveChange = True
+
+			Else
+				oLogging.CreateEntry "Configuring BitLocker Drive Encryption on computers with more than 1 pre-existing partition is not supported in this version", LogTypeInfo
+				Main = SUCCESS
+				EXIT FUNCTION
+			End If
+
+		End If
+
+		'// REBOOT if still the first pass
+		If bDriveChange and oEnvironment.Item("BdeSecondPass") <> "YES" then
+
+			oLogging.CreateEntry "Requesting a reboot before continuing BDE process", LogTypeInfo
+			oEnvironment.Item("BDESecondPass") = "YES"
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			Main = Success
+			EXIT FUNCTION
+
+		End if
+	
+		oLogging.CreateEntry "Configuring protectors.", LogTypeInfo
+		iRetVal = ConfigureProtectors()
+		TestAndFail iRetVal, 6701, "Configure Protectors "
+
+		oLogging.CreateEntry "Begining drive encryption", LogTypeInfo
+		iRetVal = Encrypt()
+		If sOSDBitLockerWaitForEncryption = "TRUE" Then
+			oLogging.CreateEntry "Begining the wait for drive encryption to complete. This can take a signifigant amount of time.", LogTypeInfo
+			WaitForEncryptionCompletion
+		End If
+		TestAndFail iRetVal, 6708, "Encrypt the disk."
+
+		oLogging.CreateEntry "Enabling protectors.", LogTypeInfo
+		iRetVal = EnableProtectors()
+		TestAndFail iRetVal, 6769, "Enable Protectors "
+
+		Main = iRetVal
+
+	End Function
+
+
+
+
+	'//
+	'// END MAIN
+	'//
+
+
+	'// BDE Protect Functions
+
+	Function GetBdeInstance ()
+	
+		Dim sConnection, oEncryptVol, oEncryptVols
+		On Error Resume Next
+
+		sConnection = "winmgmts:{impersonationLevel=impersonate,authenticationLevel=pktPrivacy}!root\cimv2\Security\MicrosoftVolumeEncryption"
+		Err.Clear
+
+		Set oBde = GetObject(sConnection)
+		TestAndFail SUCCESS, 6709, "Connect to MicrosoftVolumeEncryption WMI provider"
+
+
+
+		Set oEncryptVols = oBde.ExecQuery("Select * from Win32_EncryptableVolume")
+		oLogging.CreateEntry "Encryptable Volume Count:" & oEncryptVols.Count, LogTypeInfo
+		oLogging.CreateEntry "Attempting to bind to: " & sOSDBitLockerTargetDrive, LogTypeInfo
+
+		For Each oEncryptVol In oEncryptVols
+
+			If oEncryptVol.DriveLetter = sOSDBitLockerTargetDrive Then
+
+				Set oBdeVol = oEncryptVol
+				GetBdeInstance = Success
+				oLogging.CreateEntry "Success setting oBdeVol ", LogTypeInfo
+				EXIT FUNCTION
+				
+			End If
+			
+		Next
+
+		oLogging.CreateEntry "Unable to set oBdeVol", LogTypeError
+		GetBdeInstance = Failure
+
+	End Function
+
+	Function EncryptDataDrive ()
+		Dim iRetVal
+
+		iRetVal = GetBdeInstance()
+		TestAndFail iRetVal, 6709, "Connect to MicrosoftVolumeEncryption WMI provider"
+
+		oLogging.CreateEntry "BDE Instance Bind Complete", LogTypeInfo
+
+		iRetVal = Encrypt()
+		TestAndFail iRetVal, 6710, "Encrypting the disk"
+
+		oLogging.CreateEntry "Data drive Encryption Started", LogTypeInfo
+
+	End Function
+
+
+	Function ProtectKeyWithTpm ()
+		Dim iRetVal
+
+		oLogging.CreateEntry "Attempting to enable BitLocker TPM", LogTypeInfo
+		iRetVal = oBdeVol.ProtectKeyWithTPM("TPM Protection",Empty,sVolProtectorId)
+		Do While iRetVal = &H80310030
+		
+			PromptToRemove
+			iRetVal = oBdeVol.ProtectKeyWithTPM("TPM Protection",Empty,sVolProtectorId)
+			If iRetVal <> &H80310030 then
+			
+				PromptToInsert
+				
+			End if
+			
+		Loop
+		TestAndFail iRetVal, 6711, "ProtectKeyWithTPM "
+		ProtectKeyWithTpm = Success
+
+	End Function
+
+	Function ProtectKeyWithTpmAndPin (sPin)
+	
+		Dim iRetVal, iPinLen, sValid
+
+		On Error Resume Next
+
+		'// Validate Pin Size
+		
+		iPinLen = Len(sPin)
+
+		If iPinLen > 3 And iPinLen < 21 Then
+		
+			sValid = 1
+				
+		Else
+			
+			oLogging.CreateEntry "BdePin must be between 4 and 20 characters", LogTypeError
+			ProtectKeyWithTpmAndPin = Failure
+			Exit Function
+			
+		End If
+		
+		If (oEnvironment.item("BDEAllowAlphaNumericPin") <> UCase("YES")) and Not IsNumeric(sPin) then
+
+			oLogging.CreateEntry "BdePin must be all numeric", LogTypeError
+			ProtectKeyWithTpmAndPin = Failure
+			Exit Function
+			
+		End If
+
+		oLogging.CreateEntry "Attempting to enable BitLocker TPM", LogTypeInfo
+		iRetVal = oBdeVol.ProtectKeyWithTPMAndPIN("TPM Protection",Empty, sPin, sVolProtectorId)
+		Do While iRetVal = &H80310030
+		
+			PromptToRemove
+			iRetVal = oBdeVol.ProtectKeyWithTPMAndPIN("TPM Protection",Empty, sPin, sVolProtectorId)
+			
+			If iRetVal <> &H80310030 then
+			
+				PromptToInsert
+				
+			End if
+			
+		Loop
+		TestAndFail iRetVal, 6712, "ProtectKeyWithTPMAndPIN "
+		ProtectKeyWithTpmAndPin = Success
+
+	End Function
+
+	Function ProtectKeyWithTpmAndStartupKey (sOSDBitLockerStartupKey)
+		Dim iRetVal
+		Dim sKeyDecode
+
+		oLogging.CreateEntry "Attempting to enable BitLocker TPM and Startup Key", LogTypeInfo
+
+		If sOSDBitLockerStartupKey <> "" Then
+		
+			oLogging.CreateEntry "Using Base64 startup key supplied by user.", LogTypeInfo
+			sKeyDecode = oStrings.base64Decode(sOSDBitLockerStartupKey)
+
+			If sKeyDecode = "" Then
+			
+				oLogging.CreateEntry "Invalid OSDBitLockerStartupKey.", LogTypeError
+				ProtectKeyWithTpmAndStartupKey = Failure
+				EXIT FUNCTION
+			End If
+
+			iRetVal = oBdeVol.ProtectKeyWithTPMAndStartupKey("TPM and Startup Key Protection",Empty, ToBinaryArray(sKeyDecode),sVolProtectorId)
+			
+		Else
+		
+			iRetVal = oBdeVol.ProtectKeyWithTPMAndStartupKey("TPM and Startup Key Protection",Empty,Empty,sVolProtectorId)
+			
+		End If
+
+
+		Do While iRetVal = &H80310030
+			PromptToRemove
+			iRetVal = oBdeVol.ProtectKeyWithTPMAndStartupKey("TPM and Startup Key Protection",Empty,Empty,sVolProtectorId)
+			If iRetVal <> &H80310030 then
+				PromptToInsert
+			End if
+		Loop
+		TestAndFail iRetVal, 6713, "ProtectKeyWithTPMAndStartupKey"
+
+		oLogging.CreateEntry "Attempting to save startup key to Removable Drive: " & sOSDBitLockerStartupKeyDrive, LogTypeInfo
+		If Left(sOSDBitLockerStartupKeyDrive,2) = "\\" Then
+			oUtility.ValidateConnection sOSDBitLockerStartupKeyDrive
+			oUtility.VerifyPathExists sOSDBitLockerStartupKeyDrive
+		End If
+		iRetVal = oBdeVol.SaveExternalKeyToFile(sVolProtectorId, sOSDBitLockerStartupKeyDrive)
+		Do While iRetVal = &H80310030
+			PromptToRemove
+			iRetVal = oBdeVol.SaveExternalKeyToFile(sVolProtectorId, sOSDBitLockerStartupKeyDrive)
+			If iRetVal <> &H80310030 then
+				PromptToInsert
+			End if
+		Loop
+		TestAndFail iRetVal, 6714, "Save External Key to File"
+
+		oLogging.CreateEntry "Success saving startup key to file", LogTypeInfo
+		ProtectKeyWithTpmAndStartupKey = Success
+
+	End Function
+
+
+	Function ProtectKeyWithExternalKey ()
+		Dim iRetVal, sVolProtectorId
+
+		oLogging.CreateEntry "Attempting to intiate protection with External Key", LogTypeInfo
+		iRetVal = oBdeVol.ProtectKeyWithExternalKey("Recovery Protection",Empty,sVolProtectorId)
+		Do While iRetVal = &H80310030
+			PromptToRemove
+			iRetVal = oBdeVol.ProtectKeyWithExternalKey("Recovery Protection",Empty,sVolProtectorId)
+			If iRetVal <> &H80310030 then
+				PromptToInsert
+			End if
+		Loop
+		TestAndFail iRetVal, 6715, "Protect with External Key"
+
+		oLogging.CreateEntry "Attempting to save external key to Drive: " & sOSDBitLockerStartupKeyDrive, LogTypeInfo
+		If Left(sOSDBitLockerStartupKeyDrive,2) = "\\" Then
+			oUtility.ValidateConnection sOSDBitLockerStartupKeyDrive
+			oUtility.VerifyPathExists sOSDBitLockerStartupKeyDrive
+		End If
+		iRetVal = oBdeVol.SaveExternalKeyToFile(sVolProtectorId, sOSDBitLockerStartupKeyDrive)
+		Do While iRetVal = &H80310030
+			PromptToRemove
+			iRetVal = oBdeVol.SaveExternalKeyToFile(sVolProtectorId, sOSDBitLockerStartupKeyDrive)
+			If iRetVal <> &H80310030 then
+				PromptToInsert
+			End if
+		Loop
+		TestAndFail iRetVal, 6716, "Save external key to file"
+
+		oLogging.CreateEntry "Success saving startup key to file", LogTypeInfo
+		If sOSDBitlockerTargetDrive <> oEnv("SystemDrive") Then
+			TestAndLog oBdeVol.EnableAutoUnlock(sVolProtectorID), "AutoUnlocking Data Drive"
+		End If
+		ProtectKeyWithExternalKey = Success
+
+	End Function
+
+
+
+	Function ProtectKeyWithNumericalPassword (sPasswordFile)
+		Dim iRetVal, sNumPassword, sPassId, sPasswordText
+
+		oLogging.CreateEntry "Attempting to intiate ProtectKeyWithNumericalP@ssword", LogTypeInfo
+
+		If sOSDBitLockerRecoveryPassword <> "" Then
+		
+			oLogging.CreateEntry "Using user specified p@ssword", LogTypeInfo
+			sPasswordText = sOSDBitLockerRecoveryPassword
+			
+		Else
+		
+			sPasswordText = Empty
+			
+		End If
+
+		iRetVal = oBdeVol.ProtectKeyWithNumericalPassword("Recovery Password",sPasswordText,sPassId)
+		Do While iRetVal = &H80310030
+		
+			PromptToRemove
+			iRetVal = oBdeVol.ProtectKeyWithNumericalPassword("Recovery Password",sPasswordText,sPassId)
+			If iRetVal <> &H80310030 then
+			
+				PromptToInsert
+				
+			End if
+			
+		Loop
+		TestAndFail iRetVal, 6717, "Protect Key with Numerical Password"
+		oLogging.CreateEntry "Success protecting Key with numerical p@ssword", LogTypeInfo
+
+		If sOSDBitLockerRecoveryPassword <> "" Then
+		
+			sNumPassword = sOSDBitLockerRecoveryPassword
+			
+		Else
+		
+			oLogging.CreateEntry "Attempting to retrieve numerical p@ssword", LogTypeInfo
+			iRetVal = oBdeVol.GetKeyProtectorNumericalPassword(sPassId, sNumPassword)
+			TestAndFail iRetVal, 6718, "GetKeyProtectorNumberialP@ssword:"
+			
+		End If
+
+		oLogging.CreateEntry "Saving numerical p@ssword to file.", LogTypeInfo
+		iRetVal = SavePasswordToFile(sPasswordFile, sNumPassword)
+		TestAndFail iRetVal, 6718, "Save Password to File"
+
+		ProtectKeyWithNumericalPassword = Success
+		oLogging.CreateEntry "ProtectKeyWithNumericalP@ssword success", LogTypeInfo
+
+	End Function
+
+	Function SavePasswordToFile (sPasswordFile, sNumPassword)
+		Dim oLog, iRetVal
+
+		iRetVal = Success
+
+		Set oLog = oFSO.CreateTextFile(sPasswordFile, True, False)
+		TestAndFail SUCCESS, 6719, "Open " & sPasswordFile
+
+		oLog.WriteLine sNumPassword
+
+		oLogging.CreateEntry "Success P@ssword Key file written", LogTypeInfo
+
+		SavePasswordToFile = iRetVal
+
+	End Function
+
+	Function Encrypt ()
+		Dim iRetVal
+
+		oLogging.CreateEntry "Attempting to start BDE encryption", LogTypeInfo
+		iRetVal = oBdeVol.Encrypt()
+		TestAndFail iRetVal, 6720, "Encrypt the drive"
+		oLogging.CreateEntry "Success starting encryption", LogTypeInfo
+		Encrypt = iRetVal
+
+	End Function
+	
+	Function EnableProtectors ()
+		Dim iRetVal
+
+		iRetVal = GetBdeInstance()
+		TestAndFail iRetVal, 6766, "Get BDE Instance"
+		oLogging.CreateEntry "BDE Instance Bind Complete", LogTypeInfo
+		
+		oLogging.CreateEntry "Attempting to enable BDE Protectors", LogTypeInfo
+		iRetVal = oBdeVol.EnableKeyProtectors()
+		TestAndFail iRetVal, 6767, "Enable BDE Protectors"
+		oLogging.CreateEntry "Success enabling protectors.", LogTypeInfo
+		EnableProtectors = iRetVal
+
+	End Function
+	
+
+	Function WaitForEncryptionCompletion ()
+		Dim iRetVal
+		Dim PercentageLast
+		Dim Status, Percentage
+
+		do 
+
+			iRetVal = oBdeVol.GetConversionStatus(Status, Percentage)
+			If iRetVal <> 0 then
+				oLogging.CreateEntry "oBdeVol.GetConversionStatus returned non-zero value: " & iRetVal, LogTypeWarning
+				exit do
+			End if
+
+			If Status <> 2 then
+				oLogging.CreateEntry "Get Conversion Status: " & Status, LogTypeInfo
+				exit do
+			End if
+
+			If Percentage <> PercentageLast then
+				oLogging.ReportProgress "Bitlocker Drive Encryption in Progress", Percentage            
+				If Percentage = (Percentage \ 10) * 10 then
+					oLogging.CreateEntry "Bitlocker Drive Encryption in Progress: " & Percentage, LogTypeInfo
+				End if 
+				PercentageLast = Percentage
+			End if 
+
+			Wscript.sleep 1000
+
+		loop until FALSE
+			
+
+	End Function
+
+	'// Drive Functions
+
+	Function GetExistingBdeDrive
+	
+		Dim iRetVal, oPartition, sQuery, sDriveLetter
+
+		sDriveLetter = ""
+
+		sQuery = "SELECT * from Win32_LogicalDisk"
+
+		For Each oPartition in objWMI.ExecQUery(sQuery)
+		
+			If oPartition.VolumeName = "BDEDrive" Then
+			
+				sDriveLetter = oPartition.DeviceId
+				
+			End If
+			
+		Next
+
+		GetExistingBdeDrive = sDriveLetter
+		
+	End Function
+
+	Function GetRemovableDrive ()
+	
+		Dim iRetVal, oDrive, oDrives, iReadyCount, sDrive
+		On Error Resume Next
+
+		oLogging.CreateEntry "Starting search for removable drive", LogTypeInfo
+
+		iReadyCount = 0
+		For each oDrive in oFSO.Drives
+
+			If oDrive.DriveType = 1 then  ' Removable
+			
+				If oDrive.IsReady and oFSO.FolderExists(oDrive.Path) then
+
+					iReadyCount = iReadyCount + 1
+					oLogging.CreateEntry oDrive.Path & " is removable, ready, and formatted.", LogTypeInfo
+					If sDrive = "" then
+					
+						sDrive = oDrive.Path
+						oLogging.CreateEntry "Choosing " & sDrive, LogTypeInfo
+						
+					End if
+
+				End if
+				
+			End if
+
+		Next
+
+		If sDrive = "" then
+		
+			oLogging.CreateEntry "The search for a USB drive failed", LogTypeInfo
+			GetRemovableDrive = Failure
+			Exit Function
+			
+		End if
+
+		If iReadyCount > 1 then
+		
+			oLogging.CreateEntry "WARNING: More then one USB device was found in your system, the first (" & sDrive & ") will be used", LogTypeWarning
+			
+		End If
+
+		GetRemovableDrive = sDrive
+
+	End Function
+
+
+	Function CreateBdeDrive (sBdeDriveLetter)
+	
+		Dim iRetVal, iBdeDriveSize, sDiskPartFile,oDiskPartFile
+
+		If Left(oEnvironment.Item("OSCurrentVersion"),3) = "6.0" Then
+		
+			iBdeDriveSize = 2048
+			
+		Elseif Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.1" Then
+		
+			iBdeDriveSize = 250
+			
+		End If
+
+		If oEnvironment.Item("BdeDriveSize") <> "" Then
+		
+			iBdeDriveSize = oEnvironment.Item("BdeDriveSize")
+			
+		End If
+		
+		sDiskPartFile = oShell.ExpandEnvironmentStrings("%temp%") & "\BdeCreateDriveDiskPart.txt"
+
+		Set oDiskPartFile = oFSO.CreateTextFile(sDiskPartFile, True, False)
+		TestAndFail SUCCESS, 6721, "Open" & sDiskPartFile
+		oDiskPartFile.WriteLine "Select disk 0"
+		oDiskpartFile.WriteLine "Create Partition Primary size=" & iBdeDriveSize
+		oDiskPartFile.WriteLine "Format fs=ntfs quick"
+		oDiskpartFile.WriteLIne "Assign Letter=" & sBDEDriveLetter
+		oDiskpartFile.WriteLine "Active"
+		oDiskPartFile.Close
+
+
+		'// Execute diskpart.exe
+
+		iRetVal = oShell.Run("cmd /c ""DISKPART.EXE /s """ & sDiskPartFile & """ >> """ & oUtility.LogPath & "\ZTIShrinkDrive_diskpart.log"" 2>&1""", 0, true)
+		TestAndFail iRetVal, 6722, "Create partition"
+		oLogging.CreateEntry "Success created partition: " & sBdeDriveLetter, LogTypeInfo
+		CreateBdeDrive = iRetVal
+
+	End Function
+
+
+	Function SetBdeDriveMapping (sBdeDriveLetter)
+	
+		Dim iRetVal, sCurrentBdeDrive, oLog, sDiskPartFile
+
+		iRetVal = Success
+
+		sCurrentBdeDrive = GetExistingBdeDrive()
+		TestAndFail sCurrentBDEDrive <> "", 6723, "Get existing BDE Drive"
+		If GetBootDrive = sCurrentBdeDrive Then
+			oLogging.CreateEntry "The Drive Letter cannot be changed because it is currently the System Partition", LogTypeInfo
+		Else
+			If UCase(sCurrentBdeDrive) <> UCase(sBdeDriveLetter) Then
+
+				'// Use diskpart to change the drive letter to correct mapping.
+
+				sDiskPartFile = oShell.ExpandEnvironmentStrings("%temp%") & "\BdeFixDiskPart.txt"
+			
+				Set oLog = oFSO.CreateTextFile(sDiskPartFile, True, False)
+				TestAndFail SUCCESS, 6724, "Open" & sDiskPartFile
+
+				oLog.WriteLine "Select Vol " & sCurrentBdeDrive
+				oLog.WriteLine "Assign letter=" & sBdeDriveLetter
+				oLog.Close
+
+
+				'// Execute diskpart.exe
+
+				iRetVal = oShell.Run("cmd /c ""DISKPART.EXE /s """ & sDiskPartFile & """ >> """ & oUtility.LogPath & "\ZTIBdeFix_diskpart.log"" 2>&1""", 0, true)
+				TestAndFail iRetVal, 6725, "Execute cmd /c ""DISKPART.EXE /s """ & sDiskPartFile & """ >> """ & oUtility.LogPath & "\ZTIBdeFix_diskpart.log"" 2>&1"""
+
+			Else
+		
+				oLogging.CreateEntry "Bde Partition Drive letter matches", LogTypeInfo
+			
+			End If
+		End If
+
+		SetBdeDriveMapping = iRetVal
+
+	End Function
+
+	Function DefragDrive(sDrive)
+	
+		Dim iRetVal,sCMDString
+		iRetVal = Success
+		If oFSO.FileExists(oEnv("SystemRoot") & "\system32\defrag.exe") then
+			sCmdString = "cmd /c " & oEnv("SystemRoot") & "\system32\defrag.exe " & sDrive & "  >> " & oUtility.LogPath & "\ZTIdefrag.log" & " 2>&1"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\defrag.exe") then
+			sCmdString = "cmd /c " & oEnv("SystemRoot") & "\sysnative\defrag.exe " & sDrive & "  >> " & oUtility.LogPath & "\ZTIdefrag.log" & " 2>&1"
+		Else
+			sCmdString = "cmd /c DEFRAG.EXE " & sDrive & "  >> " & oUtility.LogPath & "\ZTIdefrag.log" & " 2>&1"
+		End if
+
+
+		iRetVal = oUtility.RunWithHeartbeat(sCmdString)
+		TestAndFail iRetVal, 6726, "Execute cmd /c DEFRAG.EXE " & sDrive & "  >> " & oUtility.LogPath & "\ZTIdefrag.log" & " 2>&1"
+
+		DefragDrive = iRetVal
+
+	End Function
+
+	Function ShrinkDrive(sDrive,sBDEDrive)
+	
+		Dim iRetVal, oDiskpartFile, iBdeDriveSize, sDiskPartFile
+		iRetVal = Success
+		sDiskPartFile = oShell.ExpandEnvironmentStrings("%temp%") & "\BdeShrinkDiskPart.txt"
+
+		Set oDiskPartFile = oFSO.CreateTextFile(sDiskPartFile, True, False)
+		TestAndFail SUCCESS, 6727, "Attempt to open " & sDiskPartFile
+		oDiskPartFile.WriteLine "Select Vol " & sDrive
+
+		If Left(oEnvironment.Item("OSCurrentVersion"),3) = "6.0" Then
+		
+			iBdeDriveSize = 2048
+			
+		Elseif Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.1" Then
+		
+			iBdeDriveSize = 500
+			
+		Else
+		
+			OLogging.CreateEntry "Cannot shrink drive if the OS is not Vista or later", LogTypeError
+			iRetVal = Failure
+			ShrinkDrive = iRetVal
+			Exit Function
+
+		End If
+
+		If isnumeric(oEnvironment.Item("BdeDriveSize")) Then
+			If cint(oEnvironment.Item("BdeDriveSize")) < iBdeDriveSize then
+				oLogging.CreateEntry "Drive size not big enough: " & oEnvironment.Item("BdeDriveSize"), LogTypeError
+			Else
+				iBdeDriveSize = oEnvironment.Item("BdeDriveSize")
+			End if
+
+		End If
+
+		oDiskPartFile.WriteLine "Shrink DESIRED = " & iBdeDriveSize & " MINIMUM = " & iBdeDriveSize
+		oDiskpartFile.WriteLine "Create Partition Primary"
+		oDiskPartFile.WriteLine "Format fs=ntfs quick"
+		oDiskpartFile.WriteLIne "Assign Letter=" & sBDEDrive
+		oDiskPartFile.Close
+
+
+		'// Execute diskpart.exe
+
+		iRetVal = oShell.Run("cmd /c ""DISKPART.EXE /s """ & sDiskPartFile & """ >> """ & oUtility.LogPath & "\ZTIShrinkDrive_diskpart.log"" 2>&1""", 0, true)
+		TestAndFail iRetVal, 6728, "Execute cmd /c ""DISKPART.EXE /s """ & sDiskPartFile & """ >> """ & oUtility.LogPath & "\ZTIShrinkDrive_diskpart.log"" 2>&1"""
+		ShrinkDrive = iRetVal
+
+	End Function
+
+
+	'// TPM Management Functions
+
+	Function GetTpmInstance()
+	
+		Dim iRetVal, sConnection
+		Dim oTpmWmi, iTpmWmi
+
+		On Error Resume Next
+
+		sConnection = "winmgmts:{impersonationLevel=impersonate,authenticationLevel=pktPrivacy}!root\cimv2\Security\MicrosoftTpm"
+
+		Set oTpmWmi = GetObject(sConnection)
+		TestAndFail SUCCESS, 6732, "Connect to MicrosoftTPM provider"
+
+		'// There should either be 0 or 1 instance of the TPM provider class
+
+		Set iTpmWmi = oTpmWmi.InstancesOf("Win32_Tpm")
+
+		If iTpmWmi.Count = 0 Then
+		
+			oLogging.CreateEntry "Failed to find a TPM instance in the provider class.", LogTypeError
+			GetTpmInstance = Failure
+			EXIT FUNCTION
+			
+		End If
+		Err.Clear
+
+
+		'Get a single instance of the TPM provider class
+		Set oTpm = oTpmWmi.Get("Win32_Tpm=@")
+		TestAndFail SUCCESS, 6733, "Get a TPM instance in the provider class"
+
+	End Function
+
+
+	Function TpmValidate ()
+	
+		Dim iRetVal, sCmd, sTpmOwnerPassword
+		iRetVal = Success
+
+
+		'// Set oTpm to valid instance
+
+		iRetVal = GetTpmInstance()
+		TestAndFail iRetVal, 6734, "Get TPM Instance"
+
+		'// Set global booleans for TPM state. Error bubble handled by subs
+
+		iRetVal	= GetTpmEnabled()
+		TestAndFail iRetVal, 6735, "Check to see if TPM is enabled"
+
+		iRetVal = GetTpmActivated()
+		TestAndFail iRetVal, 6736, "Check to see if TPM is activated"
+
+		iRetVal = GetTpmOwner()
+		TestAndFail iRetVal, 6737, "Check to see if TPM is owned"
+
+		iRetVal = GetTpmOwnershipAllowed()
+		TestAndFail iRetVal, 6738, "Check to see if TPM Ownership is allowed"
+
+		iRetVal = GetEndorsementKeyPairPresent()
+
+		oLogging.CreateEntry "TpmEnabled: " & bTpmEnabled, LogTypeInfo
+		oLogging.CreateEntry "TpmActivated: " & bTpmActivated, LogTypeInfo
+		oLogging.CreateEntry "TpmOwned: " & bTpmOwned, LogTypeInfo
+		oLogging.CreateEntry "TpmOwnershipAllowed: " & bTpmOwnershipAllowed, LogTypeInfo
+		oLogging.CreateEntry "EndorsementKeyPairPresent: " & bEndorsementKeyPairPresent, LogTypeInfo
+
+
+		'// Single instance check to allow future corrective action branching.
+		TestAndFail bTPMEnabled, 6739, "Check to see if TPM is enabled"
+		TestAndFail bTPMActivated, 6740, "Check to see if TPM is activated"
+		TestAndFail bTpmOwned or bTpmOwnershipAllowed , 6741, "Check to see if TPM is owned and ownership is allowed"
+
+		If bTpmOwned <> True AND bTpmOwnershipAllowed = True Then
+
+			If oEnvironment.Item("TpmOwnerPassword") <> "" Then
+			
+				oLogging.CreateEntry "TPM Ownership being intiated.", LogTypeInfo
+				iRetVal = SetTpmOwner(oEnvironment.Item("TpmOwnerPassword"))
+				TestAndFail iRetVal, 6741, "TPM Owner Password set"
+
+			ElseIf oEnvironment.Item("AdminPassword") <> "" Then
+			
+				oLogging.CreateEntry "TPM Ownership being intiated with AdminP@ssword (not TPMOwnerP@ssword).", LogTypeInfo
+				iRetVal = SetTpmOwner(oEnvironment.Item("AdminPassword"))
+				TestAndFail iRetVal, 6742, "TPM Owner P@ssword set to AdminP@ssword"
+
+			Else
+			
+				oLogging.CreateEntry "TPM Ownership being intiated with Default p@ssword (not TPMOwnerP@ssword).", LogTypeInfo
+				iRetVal = SetTpmOwner("M0nksH00d!4T3al")
+				TestAndFail iRetVal, 6743, "Set TPM Owner P@ssword to value"
+				
+			End If
+
+		End If
+
+		TpmValidate = Success
+
+	End Function
+
+
+	Function GetTpmEnabled()
+		Dim iRetVal
+		iRetVal = Success
+
+		iRetVal = oTpm.IsEnabled(bTpmEnabled)
+		TestAndFail iRetVal, 6744, "Check to see if TPM is enabled"
+
+		oLogging.CreateEntry "Success TPM Enabled", LogTypeInfo
+		GetTpmEnabled = Success
+
+	End Function
+
+
+	Function GetTpmOwner()
+		Dim iRetVal
+		iRetVal = Success
+
+		iRetVal = oTpm.IsOwned(bTpmOwned)
+		TestAndFail iRetVal, 6745, "Check TPM Owner"
+
+		oLogging.CreateEntry "Success TPM Is Owned", LogTypeInfo
+		GetTpmOwner = Success
+
+	End Function
+
+	Function GetEndorsementKeyPairPresent()
+		Dim iRetVal
+		iRetVal = Success
+
+		iRetVal = oTpm.IsEndorsementKeyPairPresent(bEndorsementKeyPairPresent)
+
+		oLogging.CreateEntry "Check for Ensorsement Key Pair Present = " & iRetVal, LogTypeInfo
+		GetEndorsementKeyPairPresent = Success
+
+	End Function
+
+
+	Function GetTpmActivated()
+		Dim iRetVal
+		iRetVal = Success
+
+		iRetVal = oTpm.IsActivated(bTpmActivated)
+		TestAndFail iRetVal, 6747, "Check to see if TPM is activated"
+
+		oLogging.CreateEntry "Success TPM Is Activated", LogTypeInfo
+		GetTpmActivated = Success
+
+	End Function
+
+
+	Function GetTpmOwnershipAllowed
+		Dim iRetVal
+		iRetVal = Success
+
+		iRetVal = oTpm.IsOwnershipAllowed(bTpmOwnershipAllowed)
+		TestAndFail iRetVal, 6748, "Check to see if TPM Ownership is allowed"
+		oLogging.CreateEntry "Success TPM Ownership Allowed", LogTypeInfo
+		GetTpmOwnershipAllowed = Success
+
+	End Function
+
+
+	Function SetTpmOwner (sTpmOwnerPassword)
+		Dim iRetVal, oExec, sOwnerAuthDigest, sErrCode
+		iRetVal = Failure
+
+		On Error Resume Next
+
+
+		'// Convert password to Digest
+
+		iRetVal = oTpm.ConvertToOwnerAuth(sTpmOwnerPassword, sOwnerAuthDigest)
+		TestAndFail iRetVal, 6749, "Convert owner p@ssword to owner authorization"
+
+
+		'// Set owner
+
+		If not bEndorsementKeyPairPresent then
+			iRetVal = oTpm.CreateEndorsementKeyPair
+			TestAndFail iRetVal, 6750, "Create endorsement key pair"
+
+		End if
+
+		iRetVal = oTpm.TakeOwnership(sOwnerAuthDigest)
+		oLogging.CreateEntry "Starting owner authorization process on the TPM", LogTypeInfo
+		TestAndFail iRetVal, 6751, "Change owner authorization"
+
+		SetTpmOwner = Success
+
+	End Function
+
+
+	Sub PromptToRemove
+	
+		CreateObject("Microsoft.SMS.TSProgressUI").CloseProgressDialog
+		oShell.Popup "Please remove any bootable media (CD, DVD, or USB).  This is required before BitLocker can be enabled.", 0, "Bootable media found", 48
+		sRemovableDriveLetter = GetRemovableDrive()
+		oLogging.ReportProgress "Configure Bitlocker", 20
+		
+	End Sub
+
+
+	Sub PromptToInsert
+	
+		CreateObject("Microsoft.SMS.TSProgressUI").CloseProgressDialog
+		oShell.Popup "Please reinsert the bootable media.", 0, "BitLocker Enabled", 48
+		oLogging.ReportProgress "Configure Bitlocker", 20
+		
+	End Sub
+
+	Function ToBinaryArray(Source)
+	
+		Dim StrConv
+
+		With CreateObject("ADODB.Stream")
+		
+			.Open
+			.Type = 2 ' adTypeText
+			.Charset = "ascii"
+			.WriteText Source
+			.Position = 0
+			.Type = 1 ' adTypeBinary
+			StrConv = .Read()
+			.Close
+			
+		End with
+
+		ToBinaryArray = StrConv
+		
+	End Function
+
+
+	Function ConfigureProtectors ()
+	
+		Dim iRetVal
+		If UCase(sOSDBitLockerMode) = "KEY" Then
+		
+			oLogging.CreateEntry "ProtectKeyWithExternalKey protection requested. TPM Validation being skipped", LogTypeInfo
+			
+		Else
+			
+			iRetVal = TpmValidate()
+			TestAndFail iRetVal, 6753, "Validate TPM"
+
+			oLogging.CreateEntry "TPM Validation Complete", LogTypeInfo
+		End If
+
+		'// Turn on bitlocker
+
+		iRetVal = GetBdeInstance()
+		TestAndFail iRetVal, 6754, "Get BDE Instance"
+		oLogging.CreateEntry "BDE Instance Bind Complete", LogTypeInfo
+
+		Select Case UCase(sOSDBitLockerMode)
+
+		'//ProtectKeyWithTpm
+		Case "TPM"
+
+			oLogging.CreateEntry "Performing ProtectKeyWithTpm Installation", LogTypeInfo
+			iRetVal = ProtectKeyWithTpm()
+			TestAndFail iRetVal, 6755, "Protect Key with TPM"
+
+		'// ProtectKeyWithTpmAndStartupKey
+		Case "TPMKEY", "TPMANDKEY"
+			
+			TestAndFail ConfigureBitlockerPolicy, 6764, "Configure Bitlocker Policy"
+			oLogging.CreateEntry "Performing ProtectKeyWithTpmAndStartupKey Installation", LogTypeInfo
+			TestAndFail not IsEmpty(sOSDBitLockerStartupKeyDrive), 6756, "Check for removable media to configure ProtectKeyWithTpmAndStartupKey"
+
+			iRetVal = ProtectKeyWithTpmAndStartupKey(sOSDBitLockerStartupKey)
+			TestAndFail iRetVal, 6757, "Protect key with TPM and statup key"
+
+		'// ProtectKeyWithTpmAndPin
+		Case "TPMPIN"
+			
+			TestAndFail ConfigureBitlockerPolicy, 6764, "Configure Bitlocker Policy"
+			oLogging.CreateEntry "Performing ProtectKeyWithTpmAndPin Installation", LogTypeInfo
+			TestAndFail not IsEmpty(sBdePin), 6758, "Look for BDE Pin"
+
+			iRetVal = ProtectKeyWithTpmAndPin(sBdePin)
+			TestAndFail iRetVal, 6759, "Protect key with TPM and Pin"
+
+		'// ProtectKeyWithExternalKey
+		Case "KEY"
+
+			TestAndFail ConfigureBitlockerPolicy, 6764, "Configure Bitlocker Policy"
+			oLogging.CreateEntry "Performing ProtectKeyWithExternalKey Installation", LogTypeInfo
+			TestAndFail not IsEmpty(sOSDBitLockerStartupKeyDrive), 6760, "Find removable media for BDEKeyLocation"
+
+			iRetVal = ProtectKeyWithExternalKey()
+			TestAndFail iRetVal, 6761, "Protect with External Key"
+
+		Case Else
+		
+			oLogging.CreateEntry "A valid OSDBitLockerMode type was not specified. Aborting BDE install", LogTypeError
+			ConfigureProtectors = Failure
+			EXIT FUNCTION
+			
+		End Select
+
+
+		'// Perform password generation for AD backup.
+
+		If UCase(sOSDBitLockerCreateRecoveryPassword) = "AD" Then
+
+			sPasswordFile = sOSDBitLockerStartupKeyDrive & "\" & oUtility.ComputerName & "-" & sVolProtectorId & ".txt"
+
+			oLogging.CreateEntry "Recovery P@ssword being saved to " & sPasswordFile, LogTypeInfo
+			If Left(sOSDBitLockerStartupKeyDrive, 2) = "\\" Then
+				oUtility.ValidateConnection sOSDBitLockerStartupKeyDrive
+				oUtility.VerifyPathExists sOSDBitLockerStartupKeyDrive
+			End If
+
+			
+			iRetVal = ProtectKeyWithNumericalPassword(sPasswordFile)
+			TestAndFail iRetVal, 6762, "Recovery P@ssword being saved to " & sPasswordFile
+			
+		End If
+		
+		ConfigureProtectors = Success
+		
+	End Function
+	
+
+	
+	Function ConfigureBitlockerPolicy
+
+		Dim iRetVal
+		iRetVal = Success
+		If Left(oEnvironment.Item("OSCurrentVersion"),3) >= "6.1" Then
+			iRetVal = oShell.RegWrite("HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\FVE\UseAdvancedStartup", 1, "REG_DWORD")
+			TestAndLog iRetVal, "Configured Bitlocker Policies"
+			iRetVal = oShell.RegWrite("HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\FVE\EnableBDEWithNoTPM", 1, "REG_DWORD")
+			TestAndLog iRetVal, "Configured Bitlocker Policies"
+		End If
+		
+		ConfigureBitlockerPolicy = iRetVal
+	
+	End Function
+
+End Class
+    </script>
+</job>

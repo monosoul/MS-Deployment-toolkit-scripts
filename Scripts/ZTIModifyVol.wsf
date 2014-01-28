@@ -1,0 +1,51 @@
+<job id="ZTIModifyVol">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIModifyVol.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Modify the specified volume to set GPT ID and attributes for
+' //		utility volumes (needed to Windows RE).
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIModifyVol.wsf /UtilityVol:C: [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIModifyVol
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Main = RunDiskPartSilent(array("select volume " & oEnvironment.Item("UtilityVol"), "set id=""de94bba4-06d1-4d40-a16a-bfd50179d6ac""", "gpt attributes=0x8000000000000001", "exit" ))
+
+	End Function
+
+End Class
+	</script>
+</job>

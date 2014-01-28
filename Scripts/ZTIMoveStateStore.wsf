@@ -1,0 +1,130 @@
+<job id="ZTIMoveStateStore">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIMoveStateStore.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Moves the User State and Backup files to windows\temp
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIMoveStateStore.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIMoveStateStore
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim sArchiveDir
+		Dim sCmd,sError,iResult
+		Dim oDrive
+
+
+		iRetVal = Success
+
+		If oFSO.FolderExists(oUtility.LocalRootPath & "\StateStore") then
+			
+			
+			If oEnv("SystemDrive") = "X:" Then
+
+				'Find the OS partition
+				For each oDrive in oFSO.Drives
+					If oDrive.DriveType = 2 then
+						If oDrive.IsReady Then
+							If (oFSO.FolderExists(oDrive.DriveLetter & ":\Windows") or oFSO.FolderExists(oDrive.DriveLetter & ":\Winnt")) and oDrive.DriveLetter<>"X" then
+
+								sArchiveDir = oDrive.DriveLetter & ":\WINDOWS\TEMP"
+								
+								Exit For
+	
+							End if
+						End If
+					End if
+				Next
+			End If
+			If sArchiveDir = "" Then			
+				sArchiveDir ="C:\WINDOWS\TEMP"							
+			End If
+			If oFSO.FolderExists(sArchiveDir & "\StateStore") then
+				On Error Resume Next
+				oFSO.DeleteFolder sArchiveDir & "\StateStore"
+				On Error Goto 0
+			End if
+
+			oLogging.CreateEntry "Moving " & oUtility.LocalRootPath & "\StateStore" & " to " & sArchiveDir & "\StateStore", LogTypeInfo
+
+			
+			'Check to see if the StateStore directory is on the same drive as the ArchiveDir
+			If Left(oUtility.LocalRootPath,2) = Left(sArchiveDir,2) Then
+				On Error Resume Next
+				oFSO.MoveFolder oUtility.LocalRootPath & "\StateStore", sArchiveDir & "\StateStore"
+				wscript.sleep 30000
+				If Err then
+					oLogging.CreateEntry "Error moving " & oUtility.LocalRootPath & "\StateStore" & " to " & sArchiveDir & "\StateStore: " & Err.Description & " (" & Err.Number & ").  Trying to copy", LogTypeWarning
+		
+				End if
+				On Error Goto 0
+			Else
+				On Error Resume Next
+				OFSO.CopyFolder oUtility.LocalRootPath & "\StateStore", sArchiveDir & "\StateStore"
+				If Err then
+					oLogging.CreateEntry "Error Copying " & oUtility.LocalRootPath & "\StateStore" & " to " & sArchiveDir & "\StateStore: " & Err.Description & " (" & Err.Number & ").  Trying to copy", LogTypeWarning
+				End If
+				On Error Goto 0
+			End If
+			On Error Goto 0
+
+		End if
+
+
+		Main = 0   ' Always succeed.  The errors and warnings from above will be reported so the process can continue.
+
+	End Function
+
+End Class
+
+	</script>
+</job>

@@ -1,0 +1,795 @@
+<job id="ZTIWindowsUpdate">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIWindowsUpdate.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Installs all needed updates (drivers, patches, service packs, 
+' //            etc.) from the Windows Update/Microsoft Update site or WSUS 
+' //            server, rebooting as required until no more updates are needed.
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIWindowsUpdate.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+Const MSIT_WU_REBOOT_MAX = 7
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIWindowsUpdate
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Public globalVariable
+	Private privateVariable
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' No initialization is required
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim iRetVal
+		Dim Item
+		Dim MSIT_WU_Count
+		Dim MSIT_LogType
+		Dim ServiceManager
+		Dim bFoundMU
+		Dim NewUpdateService
+		Dim oInstalledUpdates
+		Dim strCabPath
+		Dim iResult
+		Dim oProgress
+		Dim bFailure, bReboot
+
+		Main = Success
+
+		' Validate that are not restarting from a failed install.
+
+		If ucase(oEnv("SystemDrive")) = "X:" Then
+			oLogging.CreateEntry "Environment Error: ManualRetry (From ZTIWindowsUpdate).", LogTypeInfo
+
+			oEnvironment.Item("LTISuspend") = "LiteTouch is trying to install Windows Updates." & _
+				vbNewLine & "This cannot be performed in Windows PE." & _
+				vbNewLine & "If booting from a USB Flash Disk, please remove all drives before Retrying." & _
+				vbNewLine & "Otherwise, ensure the hard disk is selected first in the boot order of the BIOS."
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			Main = SUCCESS
+			exit function
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Initialization
+		'//----------------------------------------------------------------------------
+
+		MSIT_WU_Count = oEnvironment.Item("MSIT_WU_Count")
+		If not IsNumeric(MSIT_WU_Count) then
+			MSIT_WU_Count = 0
+		End if
+		oLogging.CreateEntry "Begin Windows Update. Reboot=[" & oEnvironment.Item("SMSTSRebootRequested") & "]  Retry=[" & oEnvironment.Item("SMSTSRetryRequested") & "]  Count = " & MSIT_WU_Count , LogTypeInfo
+
+		MSIT_WU_Count = MSIT_WU_Count + 1
+		oEnvironment.Item("MSIT_WU_Count") = MSIT_WU_Count
+
+
+		If oEnvironment.Item("WsusServer") = "" then
+			oLogging.ReportProgress "Initializing Windows Update process (pass " & MSIT_WU_Count & ")", 0
+		Else
+			oLogging.ReportProgress "Initializing WSUS update process (pass " & MSIT_WU_Count & ")", 0
+		End if
+
+
+		If oEnvironment.Item("SMSTSRebootRequested") <> "" then
+			oEnvironment.Item("SMSTSRebootRequested") = ""
+		End if
+		If oEnvironment.Item("SMSTSRetryRequested") <> "" then
+			oEnvironment.Item("SMSTSRetryRequested") = ""
+		End if
+
+		If MSIT_WU_Count > MSIT_WU_REBOOT_MAX then
+			oLogging.ReportFailure "ZTIWindowsUpdate has run and failed too many times. Count = " & MSIT_WU_Count, 9902
+		End if
+
+		Set oInstalledUpdates = oEnvironment.ListItem("InstalledUpdates")
+
+
+		' Make sure the necessary agent is in place
+
+		iRetVal = VerifyWUA
+		If iRetVal = 3010 then
+
+			' Initiate a reboot and ask that we be re-executed
+
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			Exit Function
+
+		ElseIf iRetVal <> 0 then
+
+			oLogging.ReportFailure "Unexpected issue installing the updated Windows Update Agent, rc = " & iRetVal, 9903
+
+		End if
+
+
+		' Opt-In to the Microsoft Update Agent
+
+		On Error Resume Next
+			Item = oFSO.GetFileVersion ( ees("%SystemRoot%\System32\WUAUENG.DLL" ) )
+			oLogging.CreateEntry "Ready to Opt-In to Microsoft Update: WUA Version: " & Item , LogTypeInfo
+			Set ServiceManager = nothing
+			Set ServiceManager = CreateObject("Microsoft.Update.ServiceManager")
+		On Error Goto 0
+
+		If ServiceManager is nothing then
+			oLogging.CreateEntry "Failed to Create Object: Microsoft.Update.ServiceManager" , LogTypeWarning
+		Else
+			bFoundMU = False
+			For each Item in ServiceManager.Services
+				WScript.Echo "Registered Update Service: " & Item.ServiceID & "   " & Item.Name
+				If Item.ServiceID = "7971f918-a847-4430-9279-4a52d1efe18d" then
+					bFoundMU = True
+				End if
+			Next
+
+			oLogging.CreateEntry "Microsoft Update Service:  Enabled = " & bFoundMU, LogTypeInfo
+			If not bFoundMU then
+				On Error Resume Next
+					Err.clear
+					ServiceManager.ClientApplicationID = "My App"
+					If Err.Number <> 0 then
+						oLogging.CreateEntry "There was an error getting Windows Update to opt into Microsoft Update. Please verify you are running the latest version of Windows Update Agent." , LogTypeWarning
+					End if
+					
+					If oEnvironment.Item("WsusServer") = "" then
+
+						'//----------------------------------------------------------------------------
+						'//  Try to find the standalone muauth.cab file and install from it
+						'//----------------------------------------------------------------------------
+						'
+						' From http://download.windowsupdate.com/v9/microsoftupdate/redir/muauth.cab
+						'
+						' Place this file in the Distribution\Tools folder so this script can find them.
+						iResult = oUtility.FindFile("muauth.cab", strCabPath)
+
+						If iResult <> Success then
+							'// "" will force a internet search for cab file 
+							strCabPath = ""
+						End if
+
+						oLogging.CreateEntry " about to begin add service ["+ strCabPath +"]", LogTypeInfo
+					
+						Set NewUpdateService = ServiceManager.AddService2("7971f918-a847-4430-9279-4a52d1efe18d",6,strCabPath)
+						oLogging.CreateEntry " Status: " & NewUpdateService.RegistrationState, LogTypeInfo
+					End if
+
+				On error goto 0
+			End if
+		End if
+
+		'//----------------------------------------------------------------------------
+		'//  Process the command line
+		'//----------------------------------------------------------------------------
+
+		Dim IsRegistered, Query_Only, UpdateCommand, BadKBArticlesList
+		Dim BadGUIDList
+
+		Query_Only    = FALSE or WScript.Arguments.Named.Exists("QUERY")
+		IsRegistered  = FALSE
+
+		If WScript.Arguments.Unnamed.Count > 0 then
+			UpdateCommand = WScript.Arguments.Unnamed.Item(0)
+		Elseif Ucase(oEnvironment.Item("DoCapture")) = "YES" or Ucase(oEnvironment.Item("DoCapture")) = "PREPARE" then
+			UpdateCommand = "IsInstalled = 0 and IsHidden = 0 and Type = 'Software'"
+		Else
+			UpdateCommand = "IsInstalled = 0 and IsHidden = 0"
+		End if
+
+
+		' Check to see if this version of Windows has been registered
+
+		IsRegistered = FALSE
+		On Error Resume Next
+		For each Item in objWMI.InstancesOf("Win32_WindowsProductActivation")
+			IsRegistered = Item.ActivationRequired = 0
+			Exit for
+		Next
+		On Error Goto 0
+
+		oLogging.CreateEntry "Command Line Procesed Query=" & QUery_Only & " Registered=" & IsRegistered & "  UpdateCommand=[" & UpdateCommand & "]" , LogTypeInfo
+
+
+		Set BadKBArticlesList = oEnvironment.ListItem("WUMU_ExcludeKB")
+		Set BadGUIDList = oEnvironment.ListItem("WUMU_ExcludeID")
+
+
+		'//----------------------------------------------------------------------------
+		'//  Search Windows Update
+		'//----------------------------------------------------------------------------
+
+		oLogging.ReportProgress "Searching for updates", 0
+
+		Dim UpdateSession, searchResults, updatesToDownload
+		Dim Downloader, Installer, UpdateResult
+		Dim kbArticle, bInstall, kb, iSize
+		Dim i
+
+		On Error Resume Next
+		Set updateSession = CreateObject("Microsoft.Update.Session")
+		Set updatesToDownload = CreateObject("Microsoft.Update.UpdateColl")
+		On Error Goto 0
+
+		If updateSession is nothing then
+			oLogging.ReportFailure "Failed to Create Object: Microsoft.Update.Session.", 9904
+		End if
+		If updatesToDownload is nothing then
+			oLogging.ReportFailure "Failed to Create Object: Microsoft.Update.UpdateColl.", 9905
+		End if
+
+		oLogging.CreateEntry "Start Search..." , LogTypeInfo
+		On Error Resume Next
+		Set searchResults = updateSession.CreateupdateSearcher().Search(UpdateCommand)
+		If Err then
+			If Err.Number = &h8024402c then
+				oLogging.CreateEntry "Error searching for updates: Not Connected to Internet? (" & Err.Number & ")", LogTypeInfo
+				Main = Success
+			ElseIf Err.Number = &h80072ee2 then
+				oLogging.CreateEntry "Error searching for updates: ERROR_INTERNET_TIMEOUT: Retry! (" & Err.Number & ")", LogTypeInfo
+				oEnvironment.Item("SMSTSRebootRequested") = "true"
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+			ElseIf Err.Number = &h80244010 then
+				oLogging.CreateEntry "Timeout Error WU_E_PT_EXCEEDED_MAX_SERVER_TRIPS : Retry! (" & Err.Number & ")", LogTypeInfo
+				' See: http://blogs.technet.com/sus/archive/2008/09/18/wsus-clients-fail-with-warning-syncserverupdatesinternal-failed-0x80244010.aspx
+				oEnvironment.Item("SMSTSRebootRequested") = "false"
+				oEnvironment.Item("SMSTSRetryRequested") = "true"
+
+			Else
+				TestAndLog err = 0, "Windows Update, search for updates."
+				Main = Failure
+			End if
+
+			CleanupWhenDone
+			Exit Function
+		End if
+		On Error Goto 0
+
+		oLogging.ReportProgress "Processing " & searchResults.Updates.Count & " updates.", 0
+		For each item in searchResults.Updates
+
+			bInstall = TRUE
+
+			On Error Resume Next
+
+			item.AcceptEula
+
+			If item.InstallationBehavior.CanRequestUserInput then
+				bInstall = FALSE ' Do NOT install anything that can Request User Input!
+			End if
+
+			For each kb in Item.Categories
+				if ucase(kb.Name) = "DRIVERS" then
+					bInstall = TRUE ' Some XP drivers may be marked as CanRequestUserInput. Override!
+					exit for
+				elseif ucase(kb.Name) = "WINDOWS VISTA ULTIMATE LANGUAGE PACKS" then
+					bInstall = FALSE ' Most users don't want *ALL* Language Packs. Too much. Override!
+					exit for
+				end if
+			Next
+
+
+			If BadKBArticlesList.Count > 0 then
+				For each kbArticle in item.KBArticleIDs
+					For each kb in BadKBArticlesList
+						If lcase(kb) = lcase(kbArticle) then
+							bInstall = FALSE ' Do NOT install any patch in the Bad KB articles list!
+						End if
+					Next
+				Next
+			End if
+
+			For each kbArticle in BadGUIDList
+				If lcase(item.Identity.UpdateID) = lcase(kbArticle) then
+					bInstall = FALSE ' Do NOT install any patch in the Bad GUID articles list!
+				End if
+			Next
+
+
+			iSize = empty
+			kb = ""
+			for i = 0 to item.KBArticleIDs.Count - 1
+				If instr(1,Item.Title,item.KBArticleIDs(i),vbTextCompare) = 0 then
+					oStrings.AddToList kb, "KB" & item.KBArticleIDs(i), " "
+				End if
+			next
+			iSize = item.MinDownloadSize
+			If item.MaxDownloadSize > 0 then 
+				iSize = Item.MaxDownloadSize
+			End if
+			If kb <> "" then
+				kb = "  [ " & kb & " ]"
+			End if
+			If iSize > 0 then
+				kb = kb & " - " & FormatLargeSize(iSize)
+			End if
+			
+			If oInstalledUpdates.Exists(item.Identity.UpdateID) Then
+				oLogging.CreateEntry "  FOUND - " & item.Identity.UpdateID & " - " & Item.Title & kb, LogTypeInfo
+			ElseIf bInstall = TRUE then
+				oLogging.CreateEntry "INSTALL - " & item.Identity.UpdateID & " - " & Item.Title & kb, LogTypeInfo
+				updatesToDownload.Add(Item)
+			Else
+				oLogging.CreateEntry "  SKIP  - " & item.Identity.UpdateID & " - " & Item.Title & kb, LogTypeInfo
+			End if
+
+			On Error Goto 0
+
+		Next
+
+		oLogging.CreateEntry "Scan complete, ready to install updates. Count = " & updatesToDownload.Count, LogTypeInfo
+
+		If updatesToDownload.Count = 0 or Query_Only then
+			oLogging.CreateEntry "This computer is up to date (Success)" , LogTypeInfo
+			oEnvironment.Item("MSIT_WU_Count") = ""  ' Reset the counter
+
+			CleanupWhenDone
+			Main = Success
+			Exit Function
+			
+		End if
+
+
+		If MSIT_WU_Count > MSIT_WU_REBOOT_MAX - 1 then
+			MSIT_LogType = LogTypeWarning
+		Else
+			MSIT_LogType = LogTypeInfo
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Download binaries
+		'//----------------------------------------------------------------------------
+
+		Set oProgress = new Progress
+
+		oLogging.CreateEntry "Begin Downloading...", LogTypeInfo
+
+		Set Downloader = updateSession.CreateUpdateDownloader()
+		Downloader.Updates = UpdatesToDownload
+		Set UpdateResult = Downloader.BeginDownload(oProgress, oProgress, vbNull)
+
+		On Error Resume Next
+		While not UpdateResult.IsCompleted
+			oLogging.ReportProgress "Downloading " & UpdatesToDownload(UpdateResult.GetProgress.CurrentUpdateIndex).Title, UpdateResult.GetProgress.PercentComplete
+			WScript.Sleep 500
+		WEnd
+		On Error Goto 0
+
+		For item = 0 to UpdatesToDownload.Count - 1
+			If not UpdatesToDownload.Item(item).IsDownloaded then
+				oLogging.CreateEntry "    Failed to download: " & UpdatesToDownload.Item(item).Identity.UpdateID & _
+					"  result(" & UpdateResult.GetUpdateResult(item).ResultCode & ") : " & UpdatesToDownload.Item(item).Title, MSIT_LogType
+			End if
+		Next
+
+		On Error Resume Next
+		Downloader.EndDownload UpdateResult
+		On Error Goto 0
+
+
+		'//----------------------------------------------------------------------------
+		'//  Install Binaries
+		'//----------------------------------------------------------------------------
+
+		oLogging.CreateEntry "Begin Installation...", LogTypeInfo
+
+		Set Installer = updateSession.CreateUpdateInstaller()
+		Installer.Updates = UpdatesToDownload
+		Set UpdateResult = nothing
+
+		On Error Resume Next
+		Set UpdateResult = Installer.BeginInstall(oProgress, oProgress, vbNull)
+		If UpdateResult is nothing then
+
+			' Some unknown error returned from the installer, reboot and try again.
+
+			oLogging.CreateEntry "Installer.Install() returned Unknown failure! " & err.number & " " & Err.Description, LogTypeInfo
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			Exit Function
+
+		End if
+		On Error Goto 0
+
+		On Error Resume Next
+		While not UpdateResult.IsCompleted
+			oLogging.ReportProgress "Installing " & UpdatesToDownload(UpdateResult.GetProgress.CurrentUpdateIndex).Title, UpdateResult.GetProgress.PercentComplete
+			WScript.Sleep 500
+		WEnd
+		On Error Goto 0
+
+		For item = 0 to UpdatesToDownload.Count - 1
+			If UpdatesToDownload.Item(item).IsInstalled then
+				oInstalledUpdates.Add UpdatesToDownload.Item(item).Identity.UpdateID,""
+			ElseIf UpdateResult.GetProgress.GetUpdateResult(item).ResultCode = 2 then
+				oInstalledUpdates.Add UpdatesToDownload.Item(item).Identity.UpdateID,""
+			End if
+		Next
+		Set oEnvironment.ListItem("InstalledUpdates") = oInstalledUpdates
+
+		bReboot = False
+		bFailure = False
+		For item = 0 to UpdatesToDownload.Count - 1
+			If not UpdatesToDownload.Item(item).IsInstalled then
+				If UpdateResult.GetProgress.GetUpdateResult(item).ResultCode <> 2 then
+					oLogging.CreateEntry "    " & UpdatesToDownload.Item(item).Identity.UpdateID & _
+						"  result(" & UpdateResult.GetProgress.GetUpdateResult(item).ResultCode & " / HR = " & hex(UpdateResult.GetProgress.GetUpdateResult(item).HResult) & _
+						" ) : " & UpdatesToDownload.Item(item).Title , MSIT_LogType
+					bFailure = True
+				End if
+				If UpdateResult.GetProgress.GetUpdateResult(item).RebootRequired then
+					bReboot = True
+				End if
+			End if
+		Next
+
+		On Error Resume Next
+		Installer.EndInstall UpdateResult
+		On Error Goto 0
+
+
+		'//----------------------------------------------------------------------------
+		'//  Cleanup
+		'//----------------------------------------------------------------------------
+
+		If bFailure then
+
+			oLogging.CreateEntry "Failure, Please run again!" , LogTypeInfo
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+
+		ElseIf bReboot then
+
+			oLogging.CreateEntry "More to install, Please reboot and run again!" , LogTypeInfo
+			oEnvironment.Item("SMSTSRetryRequested") = "true"
+			oEnvironment.Item("SMSTSRebootRequested") = "true"
+
+		Else
+		
+			' A recently installed MicrosoftUpdate/WindowsUpdate component *may* require more/new updates.
+			' Rerun Main() to ensure that all updates are installed. Exit above when MU/WU returns NO updates.
+
+			oLogging.CreateEntry "Success! Please rerun WindowsUpdate to ensure machine is FULLY up to date." , LogTypeInfo
+			Main = Main()
+
+			If LCase(oEnvironment.Item("SMSTSRetryRequested")) <> "true" then
+				CleanUpWhenDone
+			End if
+
+		End if
+
+
+
+	End function
+
+
+	'//----------------------------------------------------------------------------
+	'//  Functions
+	'//----------------------------------------------------------------------------
+
+	Function CleanUpWhenDone
+
+		Dim NoAutoUpdateState
+		NoAutoUpdateState = oEnvironment.Item("NoAutoUpdate_Previous")
+
+		If NoAutoUpdateState = "<empty>" or NoAutoUpdateState= "" then
+			oLogging.CreateEntry "Restore NoAutoUpdateKey to <empty>.", LogTypeInfo
+			On Error Resume Next
+				oShell.RegDelete "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate"
+			On Error Goto 0
+		ElseIf NoAutoUpdateState <> "" then
+			oLogging.CreateEntry "Restore NoAutoUpdateKey to " & NoAutoUpdateState, LogTypeInfo
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate", NoAutoUpdateState, "REG_DWORD"
+		Else
+			oLogging.CreateEntry "Unknown previous NoAutoUpdateKey State, Do Nothing [" & NoAutoUpdateState & "].", LogTypeInfo
+		End if
+			
+	End Function 
+
+	Function VerifyWUA
+
+		Dim iResult
+		Dim strExePath, bUpdateNeeded, objAgentInfo
+		Dim intMajorVersion
+		Dim sArchitecture
+		Dim iNoAutoUpdate
+
+
+		'//----------------------------------------------------------------------------
+		'//  Ensure the desired tracing registry entries are in place
+		'//----------------------------------------------------------------------------
+
+		On error resume next
+		oShell.RegWrite "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Trace\Level", 3, "REG_DWORD"
+
+		oShell.RegWrite "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Trace\Handler\Flags", &h000000ff, "REG_DWORD"
+		oShell.RegWrite "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Trace\Handler\Level", 3, "REG_DWORD"
+
+		oShell.RegWrite "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Trace\COMAPI\Flags", &h000000ff, "REG_DWORD"
+		oShell.RegWrite "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Trace\COMAPI\Level", 3, "REG_DWORD"
+		On error goto 0
+
+
+		'//----------------------------------------------------------------------------
+		'//  Configure Windows Update settings
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("WsusServer") <> "" then
+
+			' Configure the WSUS server in the registry.  This needs to be a URL (e.g. http://myserver).
+
+			oLogging.CreateEntry "Configuring client to use WSUS server " & oEnvironment.Item("WsusServer"), LogTypeInfo
+
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\WUServer", oEnvironment.Item("WsusServer"), "REG_SZ"
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\WUStatusServer", oEnvironment.Item("WsusServer"), "REG_SZ"
+
+		End if
+
+		oLogging.CreateEntry "Configuring Windows Update settings (manual update, use server)", LogTypeInfo
+
+		If oEnvironment.Item("NoAutoUpdate_Previous") = "" then
+			On Error Resume Next
+				iNoAutoUpdate = oShell.RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate")
+				If iNoAutoUpdate = "" then
+					iNoAutoUpdate = "<empty>"
+				End if
+				oLogging.CreateEntry "Archive NoAUtoUpdate State: Was [" & iNoAutoUpdate & "].", LogTypeInfo
+				oEnvironment.Item("NoAutoUpdate_Previous") = iNoAutoUpdate
+			On Error Goto 0
+		End if
+
+		oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\UseWUServer", 1, "REG_DWORD"
+		oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate", 1, "REG_DWORD"
+
+
+		' Restart the service to get the latest settings
+
+		oShell.Run "net stop wuauserv", 0, true
+		oShell.Run "net start wuauserv", 0, true
+
+
+		'//----------------------------------------------------------------------------
+		'//  Ensure the needed Windows Update Agent version is installed
+		'//----------------------------------------------------------------------------
+
+		bUpdateNeeded = True   ' init value, do not touch
+
+
+		' See if the version is sufficient
+
+		On Error Resume Next
+		Set objAgentInfo = CreateObject("Microsoft.Update.AgentInfo")
+		If Err.Number = 0 then
+
+			' Make sure ApiMajorVersion is 4 or higher (Version 4 is needed to opt-in to Microsoft Update)
+
+			intMajorVersion = 0   ' init value
+			intMajorVersion = objAgentInfo.GetInfo("ApiMajorVersion")
+			If intMajorVersion >= 4 Then
+				bUpdateNeeded = False
+				oLogging.CreateEntry "Windows Update Agent verion " & intMajorVersion & " found, OK to continue", LogTypeInfo
+			Else
+				oLogging.CreateEntry "Windows Update Agent verion " & intMajorVersion & " found, upgrade needed", LogTypeInfo
+			End if
+
+		Else
+			oLogging.CreateEntry "Unable to create Microsoft.Update.AgentInfo object, Windows Update Agent upgrade is needed", LogTypeInfo
+		End if
+
+
+		If not bUpdateNeeded then
+			VerifyWUA = 0
+			Exit Function
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Try to find the standalone installer file and install from it
+		'//----------------------------------------------------------------------------
+
+		' From http://technet.microsoft.com/en-us/library/bb932139.aspx, you can obtain the
+		' Windows Update Agent stand-alone installer from:
+		'
+		' http://go.microsoft.com/fwlink/?LinkID=100334 (WindowsUpdateAgent30-x86.exe)
+		' http://go.microsoft.com/fwlink/?LinkID=100335 (windowsupdateagent30-x64.exe)
+		'
+		' Place these files in the Distribution\Tools\<platform> folder so this script can find them.
+
+
+		sArchitecture = lcase(oEnvironment.Item("Architecture"))
+		If sArchitecture = "" then
+			sArchitecture = lcase(EES("%Processor_Architecture%"))
+		End if
+		If sArchitecture = "amd64" then
+			sArchitecture = "x64"
+		End if
+
+		iResult = oUtility.FindFile("WindowsUpdateAgent30-" & sArchitecture & ".exe", strExePath)
+		If iResult = Success then
+			oLogging.CreateEntry "About to install updated Windows Update Agent from " & strExePath, LogTypeInfo
+			iResult = oShell.Run(strExePath & " /quiet /norestart", 0, true)
+			oLogging.CreateEntry "Windows Update Agent installation return code = " & iResult, LogTypeInfo
+			VerifyWUA = 3010
+			Exit Function
+		End if
+
+		oLogging.CreateEntry "Unable to find WindowsUpdateAgent30-" & sArchitecture & ".exe, will attempt to download", LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------
+		'//  Download the Windows Update Agent
+		'//----------------------------------------------------------------------------
+
+		' See http://msdn2.microsoft.com/en-us/library/aa387285.aspx for the basic logic used here.
+
+
+		Dim sWURedistCab, oWUXML, sFileVer1, sFileVer2, sWUDownload
+
+
+		sWURedistCab = InternetFileDownload("http://update.microsoft.com/redist/wuredist.cab")
+		VerifyCriticalFile sWURedistCab, "wuredist.cab"
+
+
+		' Extract XML File
+
+		oUtility.RunWithHeartbeat ees("Expand.exe -r " & sWURedistCab & " -F:wuRedist.xml %temp%")
+		VerifyCriticalFile "%Temp%\WURedist.xml", "wuRedist.xml"
+
+
+		' Load XML File
+
+		Set oWUXML = oUtility.CreateXMLDOMObjectEx(EES("%Temp%\WURedist.xml"))
+		If oWUXML is nothing then
+			oLogging.CreateEntry "Failed to load: %Temp%\WURedist.xml" , LogTypeError
+			VerifyWUA = 1
+			Exit function
+		End if
+
+
+		' Get Local File Version
+
+		sFileVer1 = oFSO.GetFileVersion ( ees("%SystemRoot%\System32\WUAUENG.DLL" ) )
+		oLogging.CreateEntry "Current Version %SystemRoot%\System32\WUAUENG.DLL : " & sFileVer1 , LogTypeInfo
+
+
+		' Get New File Version
+
+		sFileVer2 = oWUXML.selectSingleNode ("//WURedist/StandaloneRedist/architecture[@name='" & sArchitecture & "']/@clientVersion").Text
+		oLogging.CreateEntry "Current Version wuredist.cab : " & sFileVer2 , LogTypeInfo
+
+
+		' Download and install if file Versions don't match
+
+		If sFileVer1 <> sFileVer2 then
+			sWUDownload = InternetFileDownload( oWUXML.DocumentElement.selectSingleNode ("//WURedist/StandaloneRedist/architecture[@name='" & sArchitecture & "']/@downloadUrl").Text )
+			VerifyCriticalFile sWUDownload, "WUDownload.exe"
+			iResult = oUtility.RunWithHeartbeat(sWUDownload & " /wuforce /quiet /norestart")
+
+			VerifyWUA = iResult
+			Exit Function
+		End if
+
+
+		' Cleanup
+
+		On Error Resume Next
+		For each item in array ( sWURedistCab, EES("%Temp%\WURedist.xml"), sWUDownload )
+			If oFSO.FileExists(item) then
+				oFSO.DeleteFile item
+			End if
+		Next
+		On Error Goto 0
+
+	End Function
+
+
+	Function InternetFileDownload( InternetURL  )
+		Dim InternetBuffer
+		Dim ADODB
+
+		Set ADODB = CreateObject("ADODB.Stream")
+		Set InternetBuffer = CreateObject("Msxml2.XmlHttp")
+		InternetBuffer.open "GET", InternetURL , false
+		On Error Resume Next
+		InternetBuffer.send ""
+		On Error Goto 0
+
+		If InternetBuffer.ReadyState = 4 then
+			oLogging.CreateEntry "Status: " & InternetBuffer.Status & " " & InternetURL, LogTypeInfo
+		Else
+			oLogging.CreateEntry "Ready State : " & InternetBuffer.ReadyState & " " & InternetURL , LogTypeWarning
+		End if
+
+		If InternetBuffer.Status = 200 then
+			If ADODB.State <> 0 then ADODB.Close
+			ADODB.Type = 1 '(1=binary,2=Text)
+			ADODB.Mode = 3 '(1=Read,2=Write,3=RW)
+			ADODB.Open
+			ADODB.Write InternetBuffer.ResponseBody
+			ADODB.SaveToFile EES( "%temp%\" & oFSO.GetFileName(InternetURL) ) , 2
+			ADODB.Close
+		End if
+
+		If InternetBuffer.Status = 200 then
+			InternetFileDownload = EES( "%temp%\" & oFSO.GetFileName(InternetURL) )
+		End if
+
+	End function
+
+	Function FormatLargeSize( lSize )
+
+		Dim i
+		For i = 1 to len(" KMGTPEZY")
+			If cdbl(lSize) < 1024 ^ i then
+				FormatLargeSize = int(cdbl(lSize)/(1024^(i-1))) & " " & mid(" KMGTPEZY",i,1) & "B"
+				Exit function
+			End if
+		next
+
+	End function
+
+	Function EES ( EnvStr )
+		EES = oShell.ExpandEnvironmentStrings( EnvStr )
+	End function
+
+
+	Sub VerifyCriticalFile (FileName, Description)
+
+		If FileName = "" or not oFSO.FileExists(ees(FileName)) then
+			oLogging.CreateEntry Description & " not found: " & FileName , LogTypeError
+			oLogging.CreateEntry "   Most likely cause: No Internet Access or unconfigured Proxy settings!", LogTypeError
+			oLogging.ReportFailure "Critical file " & FileName & " was not found, aborting", 9906
+		End if
+
+	End sub
+
+End Class
+
+Class Progress
+	Public Default Function Process
+	End Function
+End Class
+	</script>
+</job>

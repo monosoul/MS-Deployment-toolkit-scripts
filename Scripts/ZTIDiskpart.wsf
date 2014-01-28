@@ -1,0 +1,788 @@
+<job id="ZTIDiskpart">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript" src="ZTIDiskUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIDiskpart.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Partition and format the hard drive
+' // 
+' // Usage:     cscript ZTIDiskpart.wsf [/debug:true]
+' // 
+' // Variables:
+' //   DEPLOYMENTTYPE = NEWCOMPUTER   [Required]
+' //   OSDDISKINDEX = 0       - THis is the Index of the Disk to be modified
+' //   OSDPARTITIONS = 1
+' //   OSDPARTITIONS0TYPE = Primary
+' //   OSDPARTITIONS0FILESYSTEM = NTFS
+' //   OSDPARTITIONS0BOOTABLE = TRUE
+' //   OSDPARTITIONS0QUICKFORMAT = TRUE
+' //   OSDPARTITIONS0VOLUMENAME = DataDisk
+' //   OSDPARTITIONS0SIZE = 200
+' //   OSDPARTITIONS0SIZEUNITS = GB
+' //   OSDPARTITIONS0VOLUMELETTERVARIABLE = Destination Drive
+' // 
+' //   doNotFormatAndPartition  - Master Override, Do not Clean/Format. Used with Destination Drive
+' //   OSDDiskpartBiosCompatibilityMode  - Used in some WIndows 5.1 format scenarios.
+' //   OSDDiskAlign & OSDDiskOffset   - Can be used to align disks on SAN disks
+' //   DONOTCREATEEXTRAPARTITION - Override (in some scenarios), the creation of the Boot Partition.
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' Extra Boot drives are hard coded at 499MB.
+' To override this value, create a boot partition in MDT Console.
+'
+' *********************
+' The System "Active" drive must be *UNDER* 500MB.
+' Otherwise this may cause conflicts with VSS.
+' See "Understanding Disk Partitions" on Technet:
+' http://technet.microsoft.com/en-us/library/dd799232(v=ws.10).aspx
+' *********************
+'
+Const WINRE_DRIVE_SIZE = 300
+Const BOOT_DRIVE_SIZE = 499
+Const BOOT_DRIVE_SIZE_60 = 2000
+Const DISKPART_MAIN_DRIVE = "C:"
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIDiskpart
+
+
+	Dim sFreeDrive
+
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim bCreateBootPartition
+		Dim isuEFI
+		Dim isVHD
+		Dim oDisk
+		Dim bHasBootPartition
+		Dim sAlignment
+		Dim oExec
+		Dim iDiskIndex
+		Dim iDiskPartitionCount
+		Dim iPartition
+		Dim oAllDiskDrives
+		Dim isBitlocker
+		Dim sBootDrive
+
+		Dim sPartitionType
+		Dim iExtendedRemainingSize
+		Dim iPartitionSize
+		Dim iRemainingSize
+		Dim sNextDriveLetter
+		Dim sVolumeName
+		Dim sQuickFormat
+		Dim sFileSystem
+		Dim iBdeDriveSize
+		Dim i
+
+		Dim oDrive
+		Dim sDestinationDrive
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Environment Check
+		'//----------------------------------------------------------------------------
+
+		GenerateListOfAvailableDriveLetters
+		oLogging.CreateEntry "Free Drive Letter(s): " & sFreeDrive , LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------
+		'//  If needed, set diskpart workaround as described in KB 931760/931761
+		'//  Always set the variables for Windows XP and 2003
+		'//----------------------------------------------------------------------------
+
+		If Left(oEnvironment.Item("ImageBuild"), 1) = "5" Then
+			oEnvironment.Item("OSDDiskpartBiosCompatibilityMode") = "TRUE"
+		End If
+
+		If UCase(oEnvironment.Item("OSDDiskpartBiosCompatibilityMode")) = "TRUE" then
+
+			oLogging.CreateEntry "Implementing Diskpart BIOS compatibility fix (see KB 931760 and KB 931761)", LogTypeInfo
+
+			On Error Resume Next
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SYSTEM\CURRENTCONTROLSET\SERVICES\VDS\ALIGNMENT\LessThan4GB", 0, "REG_DWORD"
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SYSTEM\CURRENTCONTROLSET\SERVICES\VDS\ALIGNMENT\Between4_8GB", 0, "REG_DWORD"
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SYSTEM\CURRENTCONTROLSET\SERVICES\VDS\ALIGNMENT\Between8_32GB", 0, "REG_DWORD"
+			oShell.RegWrite "HKEY_LOCAL_MACHINE\SYSTEM\CURRENTCONTROLSET\SERVICES\VDS\ALIGNMENT\GreaterThan32GB", 0, "REG_DWORD"
+			On Error Goto 0
+
+		End If
+
+
+		'//----------------------------------------------------------------------------
+		'//  Verify there is a disk at the specified index.
+		'//----------------------------------------------------------------------------
+
+		iDiskIndex = 0
+		If isnumeric(oEnvironment.Item("OSDDiskIndex")) then
+			iDiskIndex = cint(oEnvironment.Item("OSDDiskIndex"))
+		End If
+
+		set oDisk = New ZTIDisk
+		oDisk.Disk = iDiskIndex
+		If isEmpty(oDisk.Disk) then
+			oLogging.CreateEntry "################################################", LogTypeError
+			oLogging.CreateEntry "## Disk(" & iDiskIndex & ") was not found. Unable to continue.", LogTypeError
+			oLogging.CreateEntry "## Possible Cause: Missing Storage Driver.", LogTypeError
+			oLogging.CreateEntry "################################################", LogTypeError
+			oLogging.ReportFailure "Disk OSDDiskIndex(" & iDiskIndex & ") can not be found!", 7711
+		ElseIf not oDisk.isOSReady( oEnvironment.Item("ImageBuild") ) then
+			oLogging.CreateEntry "################################################", LogTypeError
+			oLogging.CreateEntry "## Disk(" & iDiskIndex & ") Can not be Formatted in ZTIDiskPart.", LogTypeError
+			oLogging.CreateEntry "## Possible Cause: Removable drive, not an internal fixed drive.", LogTypeError
+			oLogging.CreateEntry "################################################", LogTypeError
+			oLogging.ReportFailure "Disk (" & oDisk.oWMI.Path_ & ") can not be formatted in OSD.", 7712
+		End if 
+
+		oLogging.CreateEntry "Found Disk Index: " & iDiskIndex & "   size: " & oDisk.oWMI.Size  , LogTypeInfo
+		oLogging.CreateEntry "Disk Index: " & iDiskIndex & "   size: " & oDisk.SizeAsString  , LogTypeInfo
+		oLogging.CreateEntry "Disk WMI Path : " & oDisk.oWMI.Path_ , LogTypeVerbose
+		oLogging.CreateEntry "Disk WMI MOF : " & oDisk.oWMI.GetObjectText_ , LogTypeVerbose 
+
+		'//----------------------------------------------------------------------------
+		'//  Determine if we are performing custom partition configuration
+		'//----------------------------------------------------------------------------
+
+		iDiskPartitionCount = 0
+		If isnumeric(oEnvironment.Item("OSDPartitions")) then
+			iDiskPartitionCount  = oEnvironment.Item("OSDPartitions")
+		End If
+
+		set oAllDiskDrives = AllDiskDrives
+		
+		TestAndFail iDiskPartitionCount > 0, 7813, "Verify there are partitions defined in this Task Sequence Step."
+		
+
+		'//----------------------------------------------------------------------------
+		'//  Skip Processing if this is a Media build running off Drive DISKPART_MAIN_DRIVE
+		'//----------------------------------------------------------------------------
+
+		If mid(oEnvironment.Item("DeployDrive"),2,1) = ":" then
+			If GetDiskForDrive(left(oEnvironment.Item("DeployDrive"),2)) = iDiskIndex then
+				oLogging.CreateEntry "DeployRoot is on disk #" & iDiskIndex & ". Running an OEM Scenario: Skip.", LogTypeInfo
+				oEnvironment.Item("IsOEM") = oUtility.ConvertBooleanToString(true)
+				Main = SUCCESS
+				EXIT FUNCTION
+			End If
+		End If
+
+		If iDiskIndex = 0 and oFSO.FileExists("C:\OEM.wsf") then
+			oLogging.CreateEntry "C:\OEM.wsf exists. Running an OEM Scenario: Skip.", LogTypeInfo
+			oEnvironment.Item("IsOEM") = oUtility.ConvertBooleanToString(true)
+			Main = SUCCESS
+			EXIT FUNCTION
+		End If
+
+		If ucase(oEnvironment.Item("doNotFormatAndPartition")) = "YES" then
+		
+			oLogging.CreateEntry "DoNotFormatAndPartition = YES!   Find the OS Target Drive Letter.", LogTypeInfo
+
+			sBootDrive = oUtility.GetOSTargetDriveLetterEx( false )
+			If isempty(sBootDrive) then
+				oLogging.ReportFailure "DoNotFormatAndPartition has been set to Yes, however the Target Partition for the OS could not be determined. See BDD.Log for details.", 7820
+			Else
+				oLogging.CreateEntry "Do Not Format and Partition Disk. OS Drive has been pre-set: " & sBootDrive, LogTypeInfo
+
+				oUtility.VerifyPathExists left(sBootDrive,2) & "\MININT\SMSOSD\OSDLOGS"
+				oEnvironment.Item("SMSTSLocalDataDrive") = sBootDrive
+				oUtility.ResetLocalRootPath
+
+				main = SUCCESS
+				EXIT FUNCTION
+
+			End if 
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Does the script need to Create a Boot Partition?
+		'//  Otherwise, just go off of the Task Sequence template.
+		'//----------------------------------------------------------------------------
+
+
+		isVHD = False
+		If Instr( 1, " " & oEnvironment.Item("VHDDisks") & " ", " " & trim(cstr(iDiskIndex)) & " ", vbTextCompare ) <> 0 then
+			oLogging.CreateEntry "This is a Virtual Disk, Special VHD actions from now on: " & oEnvironment.Item("VHDDisks"), LogTypeInfo
+			isVHD = True
+		End if
+		isuEFI = ucase(oEnvironment.Item("IsUEFI")) = "TRUE"
+		isBitlocker = ucase(oEnvironment.Item("doBitlocker")) = "TRUE"
+
+		' Is there at least one partition marked "bootable"?
+		bHasBootPartition = False
+		For iPartition = 0 to iDiskPartitionCount - 1
+			If ucase(ReadPartitionEntry(iPartition,"Bootable")) = "TRUE" then
+				bHasBootPartition = True
+				exit For
+			End if
+		Next
+
+		If Left(oEnvironment.Item("ImageBuild"), 1) = "5" then
+				oLogging.CreateEntry "Do not create Extra Boot Partition on Windows XP and/or Windows 2003: " & oEnvironment.Item("ImageBuild"), LogTypeInfo
+				bCreateBootPartition = False
+
+		ElseIf not bHasBootPartition then
+			oLogging.CreateEntry "There are no partitions marked [Bootable=TRUE] Defined for this disk. Disk Drive Count: " & oAllDiskDrives.Count, LogTypeInfo
+			If oAllDiskDrives.Count = 1 then
+				oLogging.CreateEntry "No partitions are marked ACTIVE!", LogTypeInfo
+				bCreateBootPartition = True
+			Else
+				oLogging.CreateEntry "Assume boot partition is on other disk.", LogTypeInfo
+				bCreateBootPartition = False
+			End if
+
+		ElseIf isuEFI and not isVHD then
+			oLogging.CreateEntry "This is an EFI machine, therefore we will need a Boot Partition.", LogTypeInfo
+			bCreateBootPartition = True
+
+			For iPartition = 0 to iDiskPartitionCount - 1
+				If ucase(ReadPartitionEntry(iPartition,"Bootable")) = "TRUE" and ucase(ReadPartitionEntry(iPartition,"FileSystem")) = "FAT32" then
+					oLogging.CreateEntry "...However, there is a FAT32 uEFI boot partition. Assume Partitions are configured properly.", LogTypeInfo
+					bCreateBootPartition = False
+					exit for
+				End if
+			next
+
+		ElseIf Ucase(oEnvironment.Item("DONotCreateExtraPartition")) = "YES" then
+			oLogging.CreateEntry "[DoNotCreateExtraPartition=YES]. OK to skip Boot Partition.", LogTypeInfo
+			bCreateBootPartition = False
+
+		ElseIf iDiskPartitionCount = 1 and iDiskIndex = 0  then
+			oLogging.CreateEntry "There is only one partition defined (MDT Default Configuration) for this disk 0 force Boot Partition.", LogTypeInfo
+			bCreateBootPartition = True
+		Else
+			oLogging.CreateEntry "There is at least one partition marked [Bootable=TRUE] on this MBR disk " & iDiskIndex & "  " & iDiskPartitionCount, LogTypeInfo
+			bCreateBootPartition = False
+
+		End if
+
+		oLogging.CreateEntry "bCreateBootPartition = " & cStr(bCreateBootPartition), LogTypeInfo
+
+
+
+		'//----------------------------------------------------------------------------
+		'// Manage the Alignment & Offset for new Partitions
+		'//----------------------------------------------------------------------------
+
+		sAlignment = ""
+		oLogging.CreateEntry "Configuring Disk Alignment", LogTypeInfo
+		If isNumeric(oEnvironment.Item("OSDDiskAlign")) and isNumeric(oEnvironment.Item("OSDDiskOffset")) then
+			sAlignment = " OFFSET=" & oEnvironment.Item("OSDDiskOffset") & "  ALIGN=" & oEnvironment.Item("OSDDiskAlign")
+		ElseIf isNumeric(oEnvironment.Item("OSDDiskAlign")) then
+			sAlignment = " ALIGN=" & oEnvironment.Item("OSDDiskAlign")
+		ElseIf isNumeric(oEnvironment.Item("OSDDiskOffset")) then
+			sAlignment = " OFFSET=" & oEnvironment.Item("OSDDiskOffset") 
+		Else
+			oLogging.CreateEntry "No Disk Alignment variables specified, alignment not updated.", LogTypeInfo
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Open an instance for diskpart.exe, and dynamically pipe the commands to the program.
+		'//----------------------------------------------------------------------------
+
+		' Make sure we don't cache the local root path
+		oUtility.CacheLocalRootPath = False
+
+		oLogging.ReportProgress "Preparing Disk " & iDiskIndex & " Partitions ...", 10
+		set oExec = oUtility.RunCommandStart("Diskpart.exe", empty)
+
+		oUtility.RunCommandWrite oExec, "RESCAN"  ' Just to be sure.
+		oUtility.RunCommandWrite oExec, "LIST DISK"
+		oUtility.RunCommandWrite oExec, "LIST VOLUME"
+
+		'//----------------------------------------------------------------------------
+		'// Re-Assign Drive DISKPART_MAIN_DRIVE if present
+		'//----------------------------------------------------------------------------
+
+		If bHasBootPartition and iDiskIndex = 0 then
+			If InStr(1,sFreeDrive,DISKPART_MAIN_DRIVE,vbTextCompare) = 0 then
+				oUtility.RunCommandWrite oExec, "REM Move Drive " & DISKPART_MAIN_DRIVE & " to a diffrent drive letter." 
+				oUtility.RunCommandWrite oExec, "Select volume " & DISKPART_MAIN_DRIVE
+				oUtility.RunCommandWrite oExec, "Assign Letter=" + GetLastAvailableDriveLetter
+				sFreeDrive = DISKPART_MAIN_DRIVE & " " & sFreeDrive  ' Push DISKPART_MAIN_DRIVE into queue
+			End if
+		End if
+
+		'//----------------------------------------------------------------------------
+		'// Clean the drive (if necessary)
+		'//----------------------------------------------------------------------------
+
+		oUtility.RunCommandWrite oExec, "SELECT DISK " & iDiskIndex
+		oUtility.RunCommandWrite oExec, "CLEAN"
+
+		' Reset IsBDE since we cleaned the disk
+
+		If UCase(oEnvironment.Item("IsBDE")) = "TRUE" then
+			oLogging.CreateEntry "Disk was cleaned, BitLocker no longer present.", LogTypeInfo
+			oEnvironment.Item("IsBDE") = oUtility.ConvertBooleanToString(false)
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'// Manage Partition Types
+		'//----------------------------------------------------------------------------
+
+		If isuEFI and (bHasBootPartition or isVHD) then
+			oUtility.RunCommandWrite oExec, "CONVERT GPT NOERR"
+
+		ElseIf oEnvironment.Item("OSDDiskType") <> "" then
+			oUtility.RunCommandWrite oExec, "CONVERT " & oEnvironment.Item("OSDDiskType") & " NOERR"
+
+		ElseIf oEnvironment.Item("OSDPartitionStyle") <> "" then
+			oUtility.RunCommandWrite oExec, "CONVERT " & oEnvironment.Item("OSDPartitionStyle") & " NOERR"
+
+		Else
+			oUtility.RunCommandWrite oExec, "CONVERT BASIC NOERR"
+		End If
+
+
+		'//----------------------------------------------------------------------------
+		'// Get the size of the extra partition. (Provided for backwards compatibiltiy).
+		'// Administrators are encouraged to define "bootable" partitions in the MDT Console instead.
+		'//----------------------------------------------------------------------------
+
+		
+		If Left(oEnvironment.Item("ImageBuild"),3) = "6.0" then
+			iBdeDriveSize = BOOT_DRIVE_SIZE_60
+		Else
+			iBdeDriveSize = BOOT_DRIVE_SIZE
+		End if
+
+		If isnumeric(oEnvironment.Item("BdeDriveSize")) Then
+			iBdeDriveSize = oEnvironment.Item("BdeDriveSize")
+			If (iBdeDriveSize < ( 300 ) ) Then
+				oLogging.ReportFailure "Disk is not large enough for System and BDE partitions, Required = 300MB", 7701
+			End If
+		End If
+
+
+		'//----------------------------------------------------------------------------
+		'// Create a Boot Partition if requested.
+		'//----------------------------------------------------------------------------
+
+		If bCreateBootPartition Then
+		
+			sBootDrive = GetLastAvailableDriveLetter
+			bHasBootPartition = true
+			
+			If isuEFI then
+
+				oLogging.CreateEntry "Create an uEFI/GPT Boot Partition set. "  & sBootDrive, LogTypeInfo
+
+				oUtility.RunCommandWrite oExec, "CREATE PARTITION PRIMARY Size=" & cstr(WINRE_DRIVE_SIZE)
+				oUtility.RunCommandWrite oExec, "FORMAT QUICK FS=NTFS LABEL=""Windows RE tools"""
+				oUtility.RunCommandWrite oExec, "ASSIGN LETTER=" & left( GetLastAvailableDriveLetter, 1)
+				oUtility.RunCommandWrite oExec, "set id=""de94bba4-06d1-4d40-a16a-bfd50179d6ac"""
+				oUtility.RunCommandWrite oExec, "gpt attributes=0x8000000000000001"
+				oUtility.RunCommandWrite oExec, "DETAIL PARTITION"
+				oUtility.RunCommandWrite oExec, "DETAIL VOLUME"
+
+				oUtility.RunCommandWrite oExec, "CREATE PARTITION EFI Size=" & cstr(iBdeDriveSize)
+				oUtility.RunCommandWrite oExec, "FORMAT QUICK FS=Fat32 LABEL=""System"""
+				oUtility.RunCommandWrite oExec, "ASSIGN LETTER=" & left( sBootDrive, 1)
+				oUtility.RunCommandWrite oExec, "DETAIL PARTITION"
+				oUtility.RunCommandWrite oExec, "DETAIL VOLUME"
+
+				oUtility.RunCommandWrite oExec, "CREATE PARTITION MSR SIZE=128"
+				oUtility.RunCommandWrite oExec, "DETAIL PARTITION"
+				oUtility.RunCommandWrite oExec, "DETAIL VOLUME"
+
+
+
+			Else
+
+				oLogging.CreateEntry "Create a MBR Boot Partition set. "  & sBootDrive, LogTypeInfo
+
+				oUtility.RunCommandWrite oExec, "CREATE PARTITION PRIMARY Size=" & cstr(iBdeDriveSize)
+				oUtility.RunCommandWrite oExec, "FORMAT QUICK FS=NTFS LABEL=""System"""
+				oUtility.RunCommandWrite oExec, "ASSIGN LETTER=" & left( sBootDrive, 1)
+				' oUtility.RunCommandWrite oExec, "ATTRIBUTES VOLUME SET NODEFAULTDRIVELETTER NOERR"
+				oUtility.RunCommandWrite oExec, "ACTIVE"
+				oUtility.RunCommandWrite oExec, "DETAIL PARTITION"
+				oUtility.RunCommandWrite oExec, "DETAIL VOLUME"
+
+
+			End if
+
+		End if 
+
+		'//----------------------------------------------------------------------------
+		'//  Create Partitions from Table
+		'//----------------------------------------------------------------------------
+
+		iRemainingSize = oDisk.oWMI.Size / 1024 /1024
+		iExtendedRemainingSize = 0
+
+		'
+		' Enumerate through all partition entries
+		'
+
+		For iPartition = 0 to iDiskPartitionCount - 1
+
+			oUtility.RunCommandWrite oExec, "REM --------------"
+			oUtility.RunCommandWrite oExec, "REM Partition " & iPartition
+
+			' Read each Partition TYPE
+
+			sPartitionType = ReadPartitionEntryEx( iPartition, "Type", "Primary" )
+			If isBitlocker then
+				TestAndFail ucase(sPartitionType) <> "EXTENDED" and ucase(sPartitionType) <> "LOGICAL", 7714, "Verify that any Bitlocker implementation does not have EXTENDED or LOGICAL Drives"
+			End if
+
+			' Read each Partition Size
+
+			If iExtendedRemainingSize <> 0 and ucase(sPartitionType) = "LOGICAL" then
+				iPartitionSize = GetPartitionSize( iPartition, iExtendedRemainingSize )
+				If isEmpty(iPartitionSize) then
+					iExtendedRemainingSize = 0
+				Else
+					iExtendedRemainingSize = clng(iExtendedRemainingSize) - clng(iPartitionSize)
+				End If
+			Else
+				iPartitionSize = GetPartitionSize( iPartition, iRemainingSize )
+				If isEmpty(iPartitionSize) then
+					iExtendedRemainingSize = 0
+					iRemainingSize = 0
+				Else
+					iExtendedRemainingSize = iPartitionSize
+					iRemainingSize = clng(iRemainingSize) - clng(iPartitionSize)
+				End If
+			End If
+
+			' Create the Partition
+
+			If isEmpty(iPartitionSize) then
+				oUtility.RunCommandWrite oExec, "Create Partition " & sPartitionType & sAlignment
+			Else
+				oUtility.RunCommandWrite oExec, "Create Partition " & sPartitionType & " Size=" & iPartitionSize & sAlignment
+			End if
+
+			sNextDriveLetter = ""
+
+			' Mark the Drive Active
+			If bCreateBootPartition then
+				oLogging.CreateEntry "Do not mark a 2nd partition active.", LogTypeInfo
+				sNextDriveLetter = left(GetNextAvailableDriveLetter,1) & ":"
+			ElseIf ucase(ReadPartitionEntry(iPartition,"Bootable")) = "TRUE" then
+				oUtility.RunCommandWrite oExec, "Active"
+				bCreateBootPartition = True
+
+				If Left(oEnvironment.Item("ImageBuild"),3) >= "6.1" then
+					sNextDriveLetter = left(GetLastAvailableDriveLetter,1) & ":"
+				Else
+					sNextDriveLetter = left(GetNextAvailableDriveLetter,1) & ":"
+				End if
+			Else
+				sNextDriveLetter = left(GetNextAvailableDriveLetter,1) & ":"
+			End If
+
+			' oUtility.RunCommandWrite oExec, "ATTRIBUTES VOLUME CLEAR NODEFAULTDRIVELETTER NOERR"
+
+			' Get a Drive Letter and Format
+
+			If ucase(sPartitionType) <> "EXTENDED" and ucase(sPartitionType) <> "MSR"  then
+
+				oUtility.RunCommandWrite oExec, "Assign letter=" & sNextDriveLetter
+
+				' The Drive letters for each partition are allocated dynamically during WinPE.
+				' For scripts that *may* need them later, Administrators can define a variable
+				' to store this Drive Letter for future use.
+				If ReadPartitionEntry(iPartition,"VolumeLetterVariable") <> "" then
+					oEnvironment.Item( ReadPartitionEntry(iPartition,"VolumeLetterVariable") ) = sNextDriveLetter
+				End if
+
+				' Construct Format Commands...
+
+				sVolumeName = ReadPartitionEntryEx(iPartition,"VolumeName", "NewDisk")
+				sFileSystem = ReadPartitionEntryEx(iPartition,"FileSystem", "NTFS")
+				sQuickFormat = ""
+				If ucase(ReadPartitionEntryEx(iPartition,"QuickFormat", "True")) <> "FALSE" then
+					sQuickFormat = "QUICK"
+				End if
+
+				If ucase(sFileSystem) = "FAT32" then
+					TestAndLog len(sVolumeName) <= 11, "Verify FAT32 Label is less than 12 chars."
+					oUtility.RunCommandWrite oExec, "FORMAT " & sQuickFormat & " FS=FAT32 LABEL=""" & left(sVolumeName,11) & """"
+				ElseIf ucase(sFileSystem) = "NONE" then
+					oUtility.RunCommandWrite oExec, "REM DO NOT FORMAT"
+				Else
+					TestAndLog len(sVolumeName) <= 32, "Verify NTFS Label is less than 33 chars."
+					oUtility.RunCommandWrite oExec, "FORMAT " & sQuickFormat & " FS=" & sFileSystem & " LABEL=""" & left(sVolumeName,32) & """"
+				End if 
+
+				oUtility.RunCommandWrite oExec, "DETAIL VOLUME"
+
+			End if
+
+			oUtility.RunCommandWrite oExec, "DETAIL PARTITION"
+
+		next ' iPartition
+
+
+		'//----------------------------------------------------------------------------
+		'//  Diskpart commands have been generated and piped, now parse and log output.
+		'//----------------------------------------------------------------------------
+
+		oUtility.RunCommandWrite oExec, "LIST PARTITION"
+		oUtility.RunCommandWrite oExec, "LIST VOLUME"
+
+		oUtility.RunCommandWrite oExec, "EXIT"
+
+		oUtility.RunCommandLog oExec, empty, -1
+
+
+		'//----------------------------------------------------------------------------
+		'//  If the disk just partitioned and formatted is the Destination Disk
+		'//     then we should perform some extra processing to ensure consistency.
+		'//----------------------------------------------------------------------------
+
+		oUtility.ReCalculateDestinationDiskAndPartition False
+
+		oLogging.CreateEntry "DestinationDisk: " & oEnvironment.Item("DestinationDisk") , LogTypeInfo
+
+		If not IsNumeric(oEnvironment.Item("DestinationDisk")) then
+			oLogging.CreateEntry "Assume this disk is not the destination Disk (DestinationDisk is not numeric).", LogTypeInfo
+		ElseIf iDiskIndex <> cint(oEnvironment.Item("DestinationDisk")) then
+			oLogging.CreateEntry "Assume this disk is not the destination Disk (DestinationDisk=" & oEnvironment.Item("DestinationDisk") & " iDiskIndex=" & iDiskIndex & ").", LogTypeInfo
+		Else
+			oLogging.CreateEntry "Assume this disk is the destination Disk, and verify.", LogTypeInfo
+
+			sDestinationDrive = oUtility.GetOSTargetDriveLetterEx(False)
+
+			If isEmpty(sDestinationDrive) then
+				oLogging.CreateEntry "Assume this disk is not the destination Disk (2).", LogTypeInfo
+				exit function
+				Main = SUCCESS
+			End if
+
+			oLogging.CreateEntry "Target Drive Letter Found: " & sDestinationDrive, LogTypeInfo
+
+
+			'//----------------------------------------------------------------------------
+			'//  The OS Drive is important. Verify that DiskPart.exe has compleeted. Wait if necessary
+			'//----------------------------------------------------------------------------
+
+			for i = 0  to 360  ' 3 Minutes
+				On Error resume Next
+				set oDrive = ofso.GetDrive(sDestinationDrive)
+				If not isEmpty(oDrive) then
+					If oDrive.isReady then
+						oLogging.CreateEntry "Found OS Drive: " & oDrive.DriveLetter & "   " & i, LogTypeInfo
+						exit for
+					End if
+				End if
+				On Error goto 0
+				oUtility.SafeSleep  500
+				If i mod 20 = 0 then
+					oLogging.CreateEntry "Waiting for Drive to Exist: " & cint(i*100/360) & "%" , LogTypeInfo
+				End if
+			next
+
+
+			oLogging.ReportProgress "Verify Disk " & sDestinationDrive & " ... ", 90
+
+			If oDrive is nothing then 
+				oLogging.ReportFailure "ERROR! Drive " & sDestinationDrive & " was not found!", 7706
+			End if
+
+			If not oDrive.isReady then
+				oLogging.ReportFailure "ERROR! Drive " & sDestinationDrive & " is not Ready!", 7707
+			End If
+
+			If oDrive.DriveType <> 2 then
+				oLogging.ReportFailure "ERROR! Drive " & sDestinationDrive & " is not a fixed disk: " & oDrive.DriveType , 7708
+			End If
+
+			set oDisk = new ZTIDiskPartition
+			oDisk.Drive = oDrive.RootFolder
+			TestAndFail not isEmpty(oDisk.Drive), 7718, "Verify drive object is created"
+
+			oLogging.CreateEntry "Check Disk [" & iDiskIndex & "] <> [" & iDiskIndex & "] OK to skip." , LogTypeInfo
+
+			If iDiskIndex <> oDisk.Disk then
+
+				oLogging.CreateEntry "Different Disk [" & iDiskIndex & "] <> [" & iDiskIndex & "] OK to skip." , LogTypeInfo
+
+			Else
+
+				If oFSO.GetFolder( oDrive.RootFolder ).Files.Count > 0 then
+					oLogging.ReportFailure "ERROR! Files are present on " & sDestinationDrive & " was not cleaned: "  & oFSO.GetFolder( oDrive.RootFolder ).Files.Count , 7709
+				End If
+
+				If oFSO.GetFolder( oDrive.RootFolder ).SubFolders.Count = 1 and oFSO.FolderExists( oDrive.RootFolder + "\MININT\" ) then
+					' OK, ztidiskpart.wsf may have written to this disk.
+				Elseif oFSO.GetFolder( oDrive.RootFolder ).SubFolders.count > 0 then
+					oLogging.ReportFailure "ERROR! Folders are present on " & sDestinationDrive & " was not cleaned: "  & oFSO.GetFolder( oDrive.RootFolder ).SubFolders.count, 7710
+				End If
+
+			End if
+
+			If oEnv("SystemDrive") = "X:" then
+				oLogging.CreateEntry "####### NOTE:  If this is one of the  last lines in your BDD.log file, check " & sDestinationDrive & " for the most up to date bdd.log!!!", LogTypeInfo
+			End if
+
+		End if 
+
+
+		'
+		' Tag any "Active" partitions so we don't use them for \minint
+		'
+
+		If Left(oEnvironment.Item("ImageBuild"),3) >= "6.1" then
+			If sBootDrive <> "" then
+				on error resume next
+				With oFSO.CreateTextFile(left(sBootDrive,2) & "\ACTIVE.MDT",true,false)
+					.Close  ' Empty 0 byte file.
+				End With
+				oFSO.GetFile(left(sBootDrive,2) & "\ACTIVE.MDT").Attributes = oFSO.GetFile(left(sBootDrive,2) & "\ACTIVE.MDT").Attributes or 2 or 4 
+				on error goto 0
+			End if
+		End if
+
+
+		Main = SUCCESS
+
+	End Function
+
+
+	'// END MAIN
+
+	'//---------------------------------------------------------------------------
+	'//  Support Routines 
+	'//---------------------------------------------------------------------------
+
+
+	Function GetPartitionSize ( Index, iRemainingSize )
+
+		' Return empty if No Size required ( 100% of remaining size )
+
+		Dim PartitionSizeUnits
+		Dim PartitionSize
+
+		PartitionSizeUnits = ReadPartitionEntry( Index, "SizeUnits" )
+		PartitionSize      = ReadPartitionEntry( Index, "Size" )
+
+		TestAndFail isnumeric(PartitionSize), 7815, "Verify Partition size is Numeric: " & PartitionSize
+
+		oLogging.CreateEntry "   Partition(" & Index & "): " & PartitionSize & " " & PartitionSizeUnits, LogTypeInfo
+
+		If ucase(PartitionSizeUnits) = "PERCENT" OR ucase(PartitionSizeUnits) = "%" then
+			If PartitionSize < 100 then
+				GetPartitionSize = int(iRemainingSize * PartitionSize / 100)
+			End if
+
+		Elseif ucase(PartitionSizeUnits) = "TB" then
+			GetPartitionSize = PartitionSize * 1000 * 1000
+
+		Elseif ucase(PartitionSizeUnits) = "GB" then
+			GetPartitionSize = PartitionSize * 1000
+
+		Elseif ucase(PartitionSizeUnits) = "MB" then
+			GetPartitionSize = PartitionSize
+
+		Else
+			oLogging.ReportError 7816, "Unknown Disk Size units: " & PartitionSizeUnits
+
+		End If
+
+		If isempty(GetPartitionSize) then
+			oLogging.CreateEntry "Size is Empty: Expand to remaining space.", LogTypeInfo
+			
+		ElseIf clng(iRemainingSize) < clng(GetPartitionSize ) then
+			oLogging.CreateEntry "Requested disk size is greater than available space: " & GetPartitionSize, LogTypeInfo
+			GetPartitionSize = empty
+
+		ElseIf clng(iRemainingSize) - clng(GetPartitionSize)  < 2 then
+			oLogging.CreateEntry "Size near end of disk: " & GetPartitionSize & " == " & iRemainingSize, LogTypeInfo
+			GetPartitionSize = empty
+
+		End If
+
+		oLogging.CreateEntry "   Size:  [ isEmpty = " & isEmpty(GetPartitionSize) & "] " & GetPartitionSize, LogTypeInfo
+
+	End Function 
+
+	'//---------------------------------------------------------------------------
+
+	Function ReadPartitionEntryEx( Index, Name, DefaultValue )
+
+		ReadPartitionEntryEx = ReadPartitionEntry( Index, Name )
+		If ReadPartitionEntryEx = "" then
+			ReadPartitionEntryEx = DefaultValue
+		End If
+
+	End Function
+
+	Function ReadPartitionEntry( Index, Name )
+
+		ReadPartitionEntry = oEnvironment.Item( "OSDPartitions" & Index & Name )
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+
+	Function GenerateListOfAvailableDriveLetters
+
+		Dim i
+		For i = asc("C") to asc("W")
+			If not ofso.DriveExists(chr(i)+":") and i <> asc("S") and i <> asc("M") then
+				sFreeDrive = trim(sFreeDrive & " " & chr(i)+":")
+			End If
+		Next
+
+	End function
+
+	Function GetNextAvailableDriveLetter
+
+		TestAndFail len(Trim(sFreeDrive)) > 0, 7817, "Verify There are Free drives available."
+		GetNextAvailableDriveLetter = left(trim(sFreeDrive),2)
+		oLogging.CreateEntry "Pop next Drive Letter: [" & GetNextAvailableDriveLetter & "]", LogTypeVerbose
+		sFreeDrive = mid(trim(sFreeDrive),4)
+
+	End function
+
+	Function GetLastAvailableDriveLetter
+
+		TestAndFail len(Trim(sFreeDrive)) > 0, 7817, "Verify There are Free drives available."
+		GetLastAvailableDriveLetter = right(trim(sFreeDrive),2)
+		oLogging.CreateEntry "Pop next Drive Letter: [" & GetLastAvailableDriveLetter & "]", LogTypeVerbose
+		sFreeDrive = replace(sFreeDrive,GetLastAvailableDriveLetter,"")
+
+	End function
+
+
+End Class
+
+   </script>
+</job>

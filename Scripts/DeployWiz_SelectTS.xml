@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_SelectTS.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_SelectTS.vbs</CustomScript>
+	</Global>
+
+	<Pane id="SelectTaskSequence" title="Task Sequence">
+		<Condition><![CDATA[UCASE(Property("SkipTaskSequence"))<>"YES" ]]></Condition>
+		<Body>
+			<![CDATA[
+				<H1>Select a task sequence to execute on this computer.</H1>
+				<label class=ErrMsg id=Bad_OSGUID>Bad Task Sequence Item (Missing OS)</label>
+
+				<div class=TreeList id=TSListBox style="height: expression( GetDynamicListBoxSize(this) );">
+<label class=errmsg style="display: inline;" >No task sequences are available (TaskSequences.xml does not exist, is empty, or is inaccessible)</label>
+					<!-- List goes here -->
+
+				</div>
+				
+			]]>
+		</Body>
+		<Initialization><![CDATA[InitializeTSList]]></Initialization>
+		<Validation><![CDATA[ValidateTSList]]></Validation>
+	</Pane>
+
+</Wizard>

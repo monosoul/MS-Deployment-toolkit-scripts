@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Roles.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Allow for the selection of roles and features.
+' //
+' // ***************************************************************************
+
+-->
+<Wizard>
+
+  <Global>
+    <CustomScript>DeployWiz_Roles.vbs</CustomScript>
+  </Global>
+
+  <Pane id="SelectRoles" title="Roles and Features">
+    <Body><![CDATA[
+
+	<H1>Select the operating system roles to install on this computer.</H1>
+	<p>The following roles and role services are available.</p> 
+
+	<div style="height: 27px;">
+	<button id=SelectAll accesskey=A OnClick=CheckRoles>Select <u>A</u>ll</button>
+	<button id=SelectNone accesskey=L OnClick=UncheckRoles>Se<u>l</u>ect None</button>
+	</div>
+
+	<div class=TreeList id="RoleListDiv">
+	</div>
+	<p></p>
+
+	<input type=hidden Name=OptionalOSRoles />
+	<input type=hidden Name=OptionalOSRoleServices />
+	<input type=hidden Name=OptionalOSFeatures />
+				
+    ]]></Body>
+    <Initialization><![CDATA[InitializeOSRoles]]></Initialization>
+    <Validation><![CDATA[ValidateOSRoles]]></Validation>
+  </Pane>
+
+</Wizard>

@@ -1,0 +1,105 @@
+<job id="ZTICopyLogs">
+   <script language="VBScript" src="ZTIUtility.vbs"/>
+   <script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTICopyLogs.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Copy the smsts.log and bdd.log files to SLshare
+' // 
+' // Usage:     cscript ZtiCopyLogs.wsf
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTICopyLogs
+
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+
+		Dim sMaxSize
+
+		oLogging.CopyLog
+		
+		'//-----------------------------------------------------------------------
+		'//Systems recovery is generally enabled but during the deployment
+		'//process is needs to be disabled, so its important to enable
+		'//System Recovery at the end of ZTI-SCCM deployments to ensure the
+		'//system will continue to create resorepoints after completion of the
+		'//deployment
+		'//-----------------------------------------------------------------------
+		
+		Dim iRetVal, oSRP
+		On Error Resume Next
+		Set oSRP = nothing 
+		Set oSRP = GetObject("winmgmts:\\.\root\default:SystemRestore")
+		If oSRP is nothing then
+			iRetVal = success
+			oLogging.CreateEntry "No system restore needed, WMI object not present.", LogTypeInfo
+		else 
+			iRetVal = oSRP.Enable(oEnv("Systemdrive") & "\")
+			If iRetVal = 1056 then
+
+				' Log this as informational
+				oLogging.CreateEntry "System restore was already enabled (rc = 1056)", LogTypeInfo
+			Else
+				' This will log any other non-zero return code
+				TestAndLog iRetVal, "Enable system restore..."
+			End if
+			
+			' Configure size of shadow storage
+
+			sMaxSize = oEnvironment.item("VSSMaxSize")
+			If sMaxSize = "" then
+				sMaxSize = "5%"
+			End if
+			oUtility.RunWithConsoleLogging "cmd.exe /c vssadmin resize shadowstorage /For=" & oEnv("Systemdrive") & " /On=" & oEnv("Systemdrive") & " /MaxSize=" & sMaxSize
+			
+		End if 
+		On Error Goto 0
+
+		' Clean up any default profile screen saver registry entries (SP1 issue avoidance)
+
+		On Error Resume Next
+		oLogging.CreateEntry "Cleaning up default wallpaper registry keys", LogTypeInfo
+		oShell.RegDelete "HKEY_USERS\.DEFAULT\Control Panel\Desktop\WallpaperStyle"
+		oShell.RegDelete "HKEY_USERS\.DEFAULT\Control Panel\Desktop\TileWallpaper"
+		oShell.RegDelete "HKEY_USERS\.DEFAULT\Control Panel\Desktop\Wallpaper"
+		On Error Goto 0
+
+
+		' Never fail
+
+		Main = Success
+		
+	End Function
+	
+End Class
+
+   </script>
+</job>

@@ -1,0 +1,403 @@
+<job id="ZTIGroups">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' // 
+' // File:      ZTIGroups.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Capture and restore local group membership
+' // 
+' // Usage:     cscript ZTIGroups.wsf [/capture] [/restore]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+'// No global constants
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIGroups
+
+	'//------------------------------------------------------------------------
+	'//  Class variable declarations
+	'//------------------------------------------------------------------------
+	Public iRetVal
+
+	'//------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+	
+	End Sub
+	
+	'//------------------------------------------------------------------------
+	'//  Main routine
+	'//------------------------------------------------------------------------
+
+	Function Main
+	
+		' Local Variables
+		
+		Dim oGroupList
+		Dim oGroup
+		Dim oGroups
+		Dim sGroup
+
+		iRetVal = Success
+
+		'//--------------------------------------------------------------------
+		'//  See what we need to do
+		'//--------------------------------------------------------------------
+
+		' Get the list of groups (if it exists)
+
+		Set oGroups = oEnvironment.ListItem("Groups")
+
+		' Find out what we need to do.
+
+		If oUtility.Arguments.Exists("capture") then
+
+			oLogging.CreateEntry "====== Capturing Groups ======", LogTypeInfo
+
+			' Figure out if we need to capture groups, or if we need to build the list of groups to capture.
+
+			Select Case UCase(oEnvironment.Item("CaptureGroups"))
+
+			Case "NO"
+				oLogging.CreateEntry "Group capturing bypassed by CaptureGroups=NO", LogTypeInfo
+				Main = Success
+				Exit Function
+
+			Case "ALL"
+				Set oGroupList = GetObject("WinNT://.")
+				oGroupList.Filter = Array("group")
+				For each oGroup in oGroupList
+					If not oGroups.Exists(oGroup.Name) and not oGroups.Exists(oGroup.Name & "," & oGroup.Description) then
+						oLogging.CreateEntry "Adding " & oGroup.Name & " to the list of groups to capture.", LogTypeInfo
+						oGroups.Add oGroup.Name & "," & oGroup.Description, ""
+					End if
+				Next
+
+			End Select
+
+			If oGroups.Count = 0 then
+				oLogging.CreateEntry "Adding ""Administrators"" to the list of groups to capture.", LogTypeInfo
+				oGroups.Add "Administrators", ""
+				oLogging.CreateEntry "Adding ""Power Users"" to the list of groups to capture.", LogTypeInfo
+				oGroups.Add "Power Users", ""
+			End if
+
+			' Perform the capture of each group
+
+			For each sGroup in oGroups.Keys
+				CaptureGroup GetGroupName(sGroup)
+			Next
+
+
+			' Persist the list of groups
+
+			Set oEnvironment.ListItem("Groups") = oGroups
+
+
+		ElseIf oUtility.Arguments.Exists("restore") then
+
+			oLogging.CreateEntry "====== Restoring Groups ======", LogTypeInfo
+
+			If oGroups.Count = 0 then
+				oLogging.CreateEntry "Adding ""Administrators"" to the list of groups to restore.", LogTypeInfo
+				oGroups.Add "Administrators",""
+				oLogging.CreateEntry "Adding ""Power Users"" to the list of groups to restore.", LogTypeInfo
+				oGroups.Add "Power Users", ""
+			End if
+
+			For each sGroup in oGroups.Keys
+				If not IsGroupPresent ( sGroup ) then
+					CreateGroup sGroup
+				End if
+				PopulateGroup GetGroupName(sGroup)
+			Next
+
+		Else
+
+			oLogging.CreateEntry "No valid command line option was specified", LogTypeError
+
+		End if
+
+
+		oLogging.CreateEntry oUtility.ScriptName & " COMPLETED.  Return Value = " & iRetVal, LogTypeInfo
+
+		Main = iRetval
+
+		' All done
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	CaptureGroup()
+	'//  Purpose:	Captures the current members of the specified group
+	'//---------------------------------------------------------------------------
+	Function CaptureGroup(sGroup)
+
+		Dim oGroup, oMember, sName, arrParts
+		Dim dicMembers
+		Dim sTrimmedGroup
+		Dim sTranslated
+
+		oLogging.CreateEntry "------ Capturing Group " & sGroup & " ------", LogTypeInfo
+
+		' See if we can translate the group name to a localized value
+		
+		sTranslated = TranslateLocalGroup(sGroup)
+		If sTranslated <> sGroup then
+			oLogging.CreateEntry "Membership of the localized " & sTranslated & " group will be captured.", LogTypeInfo
+		End if
+
+		' See if we have an object to hold the group membership.  If not, create one.
+		
+		sTrimmedGroup = Trim(sGroup)
+		While Instr(sTrimmedGroup, " ") > 0
+			sTrimmedGroup = Left(sTrimmedGroup, Instr(sTrimmedGroup, " ")-1) & Mid(sTrimmedGroup, Instr(sTrimmedGroup, " ")+1)
+		WEnd
+
+		Set dicMembers = oEnvironment.ListItem(sTrimmedGroup)
+		oLogging.CreateEntry "Members of group " & sGroup & " will be stored in property " & sTrimmedGroup, LogTypeInfo
+
+		' Get the group via ADSI
+		
+		On Error Resume Next
+		Set oGroup = GetObject("WinNT://./" & sTranslated & ",group")
+		If Err then
+			oLogging.CreateEntry "Unable to retrieve members of " & sTranslated & " group: " & Err.Description & " (" & Err.Number & ")", LogTypeWarning
+			CaptureGroup = Failure
+			EXIT FUNCTION
+		End if
+
+		' Process each of the members
+		
+		For each oMember in oGroup.Members
+			arrParts = Split(Mid(oMember.ADSPath,9),"/")
+			If UBound(arrParts) = 1 then
+				sName = arrParts(0) & "\" & arrParts(1)
+			Else
+				sName = oMember.Name
+			End if
+			oLogging.CreateEntry "Found " & sGroup & " member " & sName, LogTypeInfo
+			If not dicMembers.Exists(sName) then
+				dicMembers.Add sName, ""
+			End if
+		Next
+
+
+		' Persist the member list
+		
+		Set oEnvironment.ListItem(sTrimmedGroup) = dicMembers
+		oLogging.CreateEntry "Finished capturing membership of the """ & sTranslated & """ group.", LogTypeInfo
+
+	End Function
+
+
+	'//--------------------------------------------------------------------------------------------------
+	'//  Function:	PopulateGroup()
+	'//  Purpose:	Instructs SMS to insert specified accounts or groups into the Administrators group.
+	'//--------------------------------------------------------------------------------------------------
+	Function PopulateGroup(sGroup)
+
+		Dim sElement, oGroup, sTmp, re
+		Dim dicAdditions
+		Dim sTrimmedGroup
+		Dim sTranslated
+
+		Set re = new regexp
+		re.IgnoreCase = True
+		re.Global = True
+
+		oLogging.CreateEntry "------ Populating Group " & sGroup & " ------", LogTypeInfo
+
+		PopulateGroup = Success
+
+		' See if we can translate the group name to a localized value
+		
+		sTranslated = TranslateLocalGroup(sGroup)
+		If sTranslated <> sGroup then
+			oLogging.CreateEntry "Membership of the localized " & sTranslated & " group will be restored.", LogTypeInfo
+		End if
+
+		' Make sure we need to do something
+
+		sTrimmedGroup = Trim(sGroup)
+		While Instr(sTrimmedGroup, " ") > 0
+			sTrimmedGroup = Left(sTrimmedGroup, Instr(sTrimmedGroup, " ")-1) & Mid(sTrimmedGroup, Instr(sTrimmedGroup, " ")+1)
+		WEnd
+
+		Set dicAdditions = oEnvironment.ListItem(sTrimmedGroup)
+		oLogging.CreateEntry "Number of members in property " & sTrimmedGroup & " to restore to group " & sGroup & ": " & dicAdditions.Count, LogTypeInfo
+		If dicAdditions.Count = 0 then
+			oLogging.CreateEntry "No groups or users to add to the """ & sGroup & """ group were specified.", LogTypeInfo
+			Exit Function
+		End if
+
+		' Get the group via ADSI
+
+		Set oGroup = GetObject("WinNT://./" & sTranslated & ",group")
+
+		' Try to add each specified group or user
+
+		On Error Resume Next
+		For each sElement in dicAdditions.Keys
+
+			re.Pattern = "\\"
+			sTmp = re.Replace(sElement,"/")
+			oGroup.Add "WinNT://" & sTmp
+			If Err.Number = -2147023518 then
+				oLogging.CreateEntry "Group or user '" & sElement & "' is already a member of the group.", LogTypeInfo
+			ElseIf Err.Number = -2147023509 then
+				oLogging.CreateEntry "Group or user '" & sElement & "' could not be added because it does not exist (possibly an obsolete local account).", LogTypeInfo
+			ElseIf Err then
+				oLogging.CreateEntry "WARNING - Unable to add group or user '" & sElement & "' to the group: " & Err.Description & " (" & Err.Number & ")", LogTypeWarning
+			Else
+				oLogging.CreateEntry "Successfully added group or user '" & sElement & "' to the group.", LogTypeInfo
+			End if
+		Next
+		On Error Goto 0
+		Err.Clear
+
+		oLogging.CreateEntry "Finished adding groups and users to the """ & sTranslated & """ group.", LogTypeInfo
+
+	End Function
+
+
+	'//---------------------------------------------------------------------------
+	'//  Function:	TranslateLocalGroup()
+	'//  Purpose:	Converts an English group name to the appropriate localized
+	'//				or renamed value.
+	'//---------------------------------------------------------------------------
+	Function TranslateLocalGroup(sGroupName)
+
+		Dim sSid, re, oGroups, oGroup
+
+
+		' Fallback: return the passed-in group name so we don't return blank
+
+		TranslateLocalGroup = sGroupName
+
+
+		' Check to make sure WMI is available.  If not, we can't translate the group
+		
+		If (objWMI is Nothing) then
+			oLogging.CreateEntry "Warning: Unable to translate local groups because WMI is unavailable.  Defaulting to untranslated name.", LogTypeWarning
+			Exit Function
+		End if
+
+
+		' Well-known local groups
+		
+		Select Case sGroupName
+		Case "Administrators"
+			sSid = "^S-1-5-32-544$"
+		Case "Users"
+			sSid = "^S-1-5-32-545$"
+		Case "Guests"
+			sSid = "^S-1-5-32-546$"
+		Case "Power Users"
+			sSid = "^S-1-5-32-547$"
+		Case Else
+			oLogging.CreateEntry "Unable to translate local group name " & sGroupName & " because the SID is not known.  Assuming no translation is required.", LogTypeInfo
+			Exit Function
+		End Select
+
+
+		' Look at all local groups until a match is found
+
+		Set re = New RegExp		' Create regular expression.
+		re.IgnoreCase = False		' Set case sensitivity.
+
+		Set oGroups = objWMI.ExecQuery("select * from Win32_Group where Domain = '" & oEnvironment.Item("Hostname") & "' or Domain = 'BUILTIN'")
+		For each oGroup in oGroups
+			re.Pattern = sSid
+			If re.Test(oGroup.SID) then
+				TranslateLocalGroup = oGroup.Name
+				Exit Function
+			End if
+		Next
+
+		oLogging.CreateEntry "Unable to translate local group name '" & sGroupName & "' because it wasn't found in WMI.  Assuming the name does not require translation (or the group does not exist).", LogTypeInfo
+
+	End Function
+	
+	Function CreateGroup ( sGroup ) 
+		' Where sGroup is a comma delimited string representing the Group Name and the Group Description.
+	
+		Dim oWinNT
+		Dim oGroup
+
+		Set oWinNT = GetObject("WinNT://.")
+		
+		oLogging.CreateEntry "Adding Group [" & sGroup & "] to the system.", LogTypeInfo
+
+		Set oGroup = oWinNT.Create("group", GetGroupName( sGroup ))
+		oGroup.SetInfo
+		
+		If instr(1, sGroup, ",", vbTextCompare ) <> 0 then
+			oGroup.Description = mid( sGroup, instr(1, sGroup, ",", vbTextCompare ) + 1 )
+			oGroup.SetInfo
+		End if
+	
+	End function
+	
+	Function GetGroupName( sGroup )
+	
+		' Where sGroup is a comma delimited string representing the Group Name and the Group Description.
+		
+		If instr(1, sGroup, ",", vbTextCompare ) <> 0 then
+			GetGroupName = left( sGroup, instr(1, sGroup, ",", vbTextCompare ) - 1 )
+		Else
+			GetGroupName = sGroup
+		End if
+	
+	End function
+	
+	Function IsGroupPresent ( sGroup ) 
+		
+		Dim oGroupList
+		Dim oGroup
+		Dim sGroupName
+		
+		IsGroupPresent = false
+		sGroupName = trim(GetGroupName( sGroup ))
+		
+		Set oGroupList = GetObject("WinNT://.")
+		oGroupList.Filter = Array("group")
+		For each oGroup in oGroupList
+			If trim(ucase(oGroup.Name)) = ucase(sGroupName) then
+				IsGroupPresent = true
+				exit function
+			ElseIf trim(ucase(oGroup.Name)) = ucase(TranslateLocalGroup(sGroupName)) then
+				IsGroupPresent = true
+				exit function
+			End if
+		next
+		
+	End function
+
+End class
+	</script>
+</job>

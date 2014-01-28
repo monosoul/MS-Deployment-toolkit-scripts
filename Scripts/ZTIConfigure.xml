@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mappings>
+
+	<mapping id="ComputerName" type="ini">
+		<section>UserData</section>
+	</mapping>
+	<mapping id="FullName" type="ini">
+		<section>UserData</section>
+	</mapping>
+	<mapping id="OrgName" type="ini">
+		<section>UserData</section>
+	</mapping>
+	<mapping id="ProductKey" type="ini">
+		<section>UserData</section>
+	</mapping>
+
+	<mapping id="JoinDomain" type="ini">
+		<section>Identification</section>
+	</mapping>
+	<mapping id="MachineObjectOU" type="ini">
+		<section>Identification</section>
+	</mapping>
+	<mapping id="JoinWorkgroup" type="ini">
+		<section>Identification</section>
+	</mapping>
+	<mapping id="DomainAdmin" type="ini">
+		<section>Identification</section>
+	</mapping>
+	<mapping id="DomainAdminPassword" type="ini">
+		<section>Identification</section>
+	</mapping>
+
+	<mapping id="InputLocale" type="ini">
+		<section>RegionalSettings</section>
+	</mapping>
+	<mapping id="Language" type="ini">
+		<section>RegionalSettings</section>
+	</mapping>
+	<mapping id="LanguageGroup" type="ini">
+		<section>RegionalSettings</section>
+	</mapping>
+	<mapping id="SystemLocale" type="ini">
+		<section>RegionalSettings</section>
+	</mapping>
+	<mapping id="UserLocale" type="ini">
+		<section>RegionalSettings</section>
+	</mapping>
+
+	<mapping id="TimeZone" type="ini">
+		<section>GuiUnattended</section>
+	</mapping>
+	<mapping id="AutoLogon" type="ini">
+		<section>GuiUnattended</section>
+	</mapping>
+	<mapping id="AutoLogonCount" type="ini">
+		<section>GuiUnattended</section>
+	</mapping>
+	<mapping id="AdminPassword" type="ini">
+		<section>GuiUnattended</section>
+	</mapping>
+
+	<mapping id="BitsPerPel" type="ini">
+		<section>Display</section>
+	</mapping>
+	<mapping id="Xresolution" type="ini">
+		<section>Display</section>
+	</mapping>
+	<mapping id="Yresolution" type="ini">
+		<section>Display</section>
+	</mapping>
+	<mapping id="Vrefresh" type="ini">
+		<section>Display</section>
+	</mapping>
+
+	<mapping id="AreaCode" type="ini">
+		<section>TapiLocation</section>
+	</mapping>
+	<mapping id="CountryCode" type="ini">
+		<section>TapiLocation</section>
+	</mapping>
+	<mapping id="Dialing" type="ini">
+		<section>TapiLocation</section>
+	</mapping>
+	<mapping id="LongDistanceAccess" type="ini">
+		<section>TapiLocation</section>
+	</mapping>
+	<mapping id="Home_Page" type="ini">
+		<section>URL</section>
+	</mapping>
+	<mapping id="AutoMode" type="ini">
+		<section>LicenseFilePrintData</section>
+	</mapping>
+	<mapping id="AutoUsers" type="ini">
+		<section>LicenseFilePrintData</section>
+	</mapping>
+
+
+
+
+	<mapping id="Upgrade" type="xml">
+		<xpath removeIfBlank="Parent"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/UpgradeData/Upgrade]]></xpath>
+	</mapping>
+	<mapping id="OSDComputerName" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/ComputerName]]></xpath>
+	</mapping>
+	<mapping id="ProductKey" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/ProductKey]]></xpath>
+		<xpath removeIfBlank="Parent"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/UserData/ProductKey/Key]]></xpath>
+	</mapping>
+	<mapping id="OverrideProductKey" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/ProductKey]]></xpath>
+	</mapping>
+	<mapping id="JoinDomain" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/JoinDomain]]></xpath>
+		<remove><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/JoinWorkgroup]]></remove>
+	</mapping>
+	<mapping id="MachineObjectOU" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/MachineObjectOU]]></xpath>
+	</mapping>
+	<mapping id="JoinWorkgroup" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/JoinWorkgroup]]></xpath>
+		<remove><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/JoinDomain]]></remove>
+		<remove><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/Credentials]]></remove>
+		<remove><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/MachineObjectOU]]></remove>
+	</mapping>
+	<mapping id="DomainAdmin" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/Credentials/Username]]></xpath>
+	</mapping>
+	<mapping id="DomainAdminDomain" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/Credentials/Domain]]></xpath>
+	</mapping>
+	<mapping id="DomainAdminPassword" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-UnattendedJoin"]/Identification/Credentials/Password]]></xpath>
+	</mapping>
+	<mapping id="InstallFromPath" type="xml">
+		<xpath><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/ImageInstall/OSImage/InstallFrom/Path]]></xpath>
+	</mapping>
+	<mapping id="ImageIndex" type="xml">
+		<xpath key="/image/index"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/ImageInstall/OSImage/InstallFrom/MetaData]]></xpath>
+		<xpath key="/IMAGE/INDEX"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/ImageInstall/OSImage/InstallFrom/MetaData]]></xpath>
+	</mapping>
+	<mapping id="AdminPassword" type="xml">
+		<xpath><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/AutoLogon/Password/Value]]></xpath>
+		<xpath><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/UserAccounts/AdministratorPassword/Value]]></xpath>
+	</mapping>
+	<mapping id="RemoveLocalAccountElementFromUnattendXML" type="xml">
+		<xpath><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/UserAccounts/LocalAccounts]]></xpath>
+	</mapping>
+	<mapping id="Organization" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOrganization]]></xpath>
+	</mapping>
+	<mapping id="FullName" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOwner]]></xpath>
+	</mapping>
+	<mapping id="BitsPerPel" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/Display/ColorDepth]]></xpath>
+	</mapping>
+	<mapping id="Xresolution" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/Display/HorizontalResolution]]></xpath>
+	</mapping>
+	<mapping id="Yresolution" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/Display/VerticalResolution]]></xpath>
+	</mapping>
+	<mapping id="Vrefresh" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/Display/RefreshRate]]></xpath>
+	</mapping>
+	<mapping id="AreaCode" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-TapiSetup"]/TapiUnattendLocation/AreaCode]]></xpath>
+	</mapping>
+	<mapping id="CountryCode" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-TapiSetup"]/TapiUnattendLocation/CountryOrRegion]]></xpath>
+	</mapping>
+	<mapping id="LongDistanceAccess" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-TapiSetup"]/TapiUnattendLocation/LongDistanceAccess]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-TapiSetup"]/TapiUnattendLocation/OutsideAccess]]></xpath>
+	</mapping>
+	<mapping id="TimeZoneName" type="xml" >
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/TimeZone]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/TimeZone]]></xpath>
+	</mapping>
+	<mapping id="KeyboardLocale" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-International-Core"]/InputLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-International-Core"]/InputLocale]]></xpath>
+	</mapping>
+	<mapping id="UserLocale" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-International-Core"]/SystemLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-International-Core"]/SystemLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-International-Core"]/UserLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-International-Core"]/UserLocale]]></xpath>
+	</mapping>
+	<mapping id="UILanguage" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-International-Core"]/UILanguage]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-International-Core"]/UILanguage]]></xpath>
+	</mapping>
+	<mapping id="ImageLanguage001" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-International-Core-WinPE"]/SystemLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-International-Core-WinPE"]/UserLocale]]></xpath>
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-International-Core-WinPE"]/UILanguage]]></xpath>
+	</mapping>
+	<mapping id="Home_Page" type="xml">
+		<xpath removeIfBlank="Self"><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-IE-InternetExplorer"]/Home_Page]]></xpath>
+	</mapping>
+	<mapping id="OrgName" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOrganization]]></xpath>
+		<xpath><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOrganization]]></xpath>
+	</mapping>
+	<mapping id="FullName" type="xml">
+		<xpath><![CDATA[//settings[@pass="specialize"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOwner]]></xpath>
+		<xpath><![CDATA[//settings[@pass="oobeSystem"]/component[@name="Microsoft-Windows-Shell-Setup"]/RegisteredOwner]]></xpath>
+	</mapping>
+	<mapping id="DestinationDisk" type="xml">
+		<xpath><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/ImageInstall/OSImage/InstallTo/DiskID]]></xpath>
+	</mapping>
+	<mapping id="DestinationPartition" type="xml">
+		<xpath><![CDATA[//settings[@pass="windowsPE"]/component[@name="Microsoft-Windows-Setup"]/ImageInstall/OSImage/InstallTo/PartitionID]]></xpath>
+	</mapping>
+</mappings>

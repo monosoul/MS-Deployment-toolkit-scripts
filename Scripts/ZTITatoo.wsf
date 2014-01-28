@@ -1,0 +1,221 @@
+<job id="ZTITatoo">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTITatoo.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Tattoo the machine with identification and version info
+' // 
+' // Usage:     cscript.exe [//nologo] ZTITatoo.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No constants are required
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTITatoo
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	' No instance variables are required
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		' No initialization is required
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim sValue
+		Dim oDate
+		Dim sMOFFile
+		Dim sCmd
+		Dim oInfo
+		Dim sDeploymentMethod
+		Dim sDeploymentSource
+
+
+		iRetVal = Success
+
+
+		' Make sure we're really in the full OS
+
+		If oEnvironment.Item("OSVersion") = "WinPE" then
+			oLogging.ReportFailure "ERROR - ZTITatoo state restore task should be running in the full OS, aborting.", 9601
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Copy and compile the MOF
+		'//----------------------------------------------------------------------------
+
+		iRetVal = oUtility.FindFile("ZTITatoo.mof", sMOFFile)
+		If iRetVal <> Success then
+
+			oLogging.CreateEntry "Unable to find ZTITatoo.mof, information will not be available via WMI.", LogTypeInfo
+
+		Else
+
+			oLogging.CreateEntry "Copying " & sMOFFile & " to " & oEnv("WINDIR") & "\SYSTEM32\WBEM\ZTITatoo.mof.", LogTypeInfo
+			If oFSO.FileExists(oEnv("WINDIR") & "\SYSTEM32\WBEM\ZTITatoo.mof") then
+				oFSO.GetFile(oEnv("WINDIR") & "\SYSTEM32\WBEM\ZTITatoo.mof").Attributes = 0
+			End if
+			oFSO.CopyFile sMOFFile, oEnv("WINDIR") & "\SYSTEM32\WBEM\ZTITatoo.mof", true
+
+			sCmd = oEnv("WINDIR") & "\SYSTEM32\WBEM\MOFCOMP.EXE -autorecover " & oEnv("WINDIR") & "\SYSTEM32\WBEM\ZTITatoo.mof"
+			oLogging.CreateEntry "About to compile MOF: " & sCmd, LogTypeInfo
+			iRetVal = oShell.Run(sCmd, 0, true)
+			oLogging.CreateEntry "MOFCOMP return code = " & iRetVal, LogTypeInfo
+
+		End if
+
+
+		' Retrieve the new WMI instance
+
+		Set oInfo = objWMI.Get("Microsoft_BDD_Info.InstanceKey=""@""")
+
+
+		'//----------------------------------------------------------------------------
+		'//  Record the deployment details
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentMethod") = "SCCM" then
+			If UCase(oEnvironment.Item("SkipWizard")) <> "NO" then
+				sDeploymentMethod = "ZTI"
+			Else
+				sDeploymentMethod = "UDI"
+			End if
+			If oEnvironment.Item("_SMSTSMediaType") = "OEMMedia" then
+				sDeploymentSource = "OEM"
+			ElseIf oEnvironment.Item("_SMSTSMediaType") = "FullMedia" then
+				sDeploymentSource = "MEDIA"
+			Else
+				sDeploymentSource = "UNC"
+			End if
+		Else
+			sDeploymentMethod = "LTI"
+			If UCase(oEnvironment.Item("IsOEM")) = "TRUE" then
+				sDeploymentSource = "OEM"
+			Else
+				sDeploymentSource = oEnvironment.Item("DeploymentMethod")
+			End if
+		End if
+
+		Set oDate = CreateObject("WbemScripting.SWbemDateTime")
+		oDate.SetVarDate(Now())
+
+
+		'//----------------------------------------------------------------------------
+		'//  If capturing an image, record the capture details separately.  This keeps
+		'//   them from being overwritten when deploying this image later.
+		'//----------------------------------------------------------------------------
+
+		If UCase(oEnvironment.Item("DoCapture")) = "YES" or UCase(oEnvironment.Item("DoCapture")) = "SYSPREP" or UCase(oEnvironment.Item("DoCapture")) = "PREPARE" then
+
+			oInfo.CaptureMethod = sDeploymentMethod
+			oInfo.CaptureTimestamp = oDate.Value
+			oInfo.CaptureToolkitVersion = Version
+
+
+			'//----------------------------------------------------------------------------
+			'//  If this is Lite Touch, populate the task sequence details
+			'//----------------------------------------------------------------------------
+
+			oInfo.CaptureTaskSequenceID = oEnvironment.Item("TaskSequenceID")
+			oInfo.CaptureTaskSequenceName = oEnvironment.Item("TaskSequenceName")
+			oInfo.CaptureTaskSequenceVersion = oEnvironment.Item("TaskSequenceVersion")
+
+
+			'//----------------------------------------------------------------------------
+			'//  If this is ConfigMgr, populate the package ID and program name
+			'//----------------------------------------------------------------------------
+
+			If oEnvironment.Item("_SMSTSPackageID") <> "" then
+				oInfo.CaptureOSDPackageID = oEnvironment.Item("_SMSTSPackageID")
+				oInfo.CaptureOSDProgramName = "*"
+				oInfo.CaptureOSDAdvertisementID = oEnvironment.Item("_SMSTSAdvertID")
+			End if
+
+		Else
+
+			oInfo.DeploymentMethod = sDeploymentMethod
+			oInfo.DeploymentType = oEnvironment.Item("DeploymentType")
+			oInfo.DeploymentSource = sDeploymentSource
+			oInfo.DeploymentToolkitVersion = Version
+			oInfo.DeploymentTimestamp = oDate.Value
+
+
+			'//----------------------------------------------------------------------------
+			'//  If this is Lite Touch, populate the task sequence details
+			'//----------------------------------------------------------------------------
+
+			oInfo.TaskSequenceID = oEnvironment.Item("TaskSequenceID")
+			oInfo.TaskSequenceName = oEnvironment.Item("TaskSequenceName")
+			oInfo.TaskSequenceVersion = oEnvironment.Item("TaskSequenceVersion")
+
+
+			'//----------------------------------------------------------------------------
+			'//  If this is ConfigMgr, populate the package ID and program name
+			'//----------------------------------------------------------------------------
+
+			If oEnvironment.Item("_SMSTSPackageID") <> "" then
+
+				sValue = oEnvironment.Item("_SMSTSSiteCode") & ":" & oEnvironment.Item("_SMSTSPackageID")
+				oShell.RegWrite "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CM_DSLID", sValue, "REG_SZ"
+
+				oInfo.OSDPackageID = oEnvironment.Item("_SMSTSPackageID")
+				oInfo.OSDProgramName = "*"
+				oInfo.OSDAdvertisementID = oEnvironment.Item("_SMSTSAdvertID")
+
+			End if
+
+		End if
+
+
+		' Save the changes
+
+		oInfo.Put_
+
+
+		Main = iRetVal
+
+	End Function
+
+End Class
+
+	</script>
+</job>

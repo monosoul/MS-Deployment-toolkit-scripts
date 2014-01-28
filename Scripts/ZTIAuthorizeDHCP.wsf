@@ -1,0 +1,146 @@
+<job id="ZTIAuthorizeDHCP">
+<script language="VBScript" src="ZTIUtility.vbs"/>
+<script language="VBScript">
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIAuthorizeDHCP.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Adds a DHCP server to the list of authorized servers in Active Directory.
+' // 
+' // Usage:     cscript ZTIAuthorizeDHCP.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+'//----------------------------------------------------------------------------
+'//
+'//  Global constants
+'//
+'//----------------------------------------------------------------------------
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIAuthorizeDHCP
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+		
+	End Sub	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+	
+		Dim iRetval
+		Dim strFQDN
+		Dim tmpIP
+		Dim strIP
+		Dim dicIP
+		Dim oComputer
+		Dim sCmd
+		Dim oADS
+
+		iRetval = SUCCESS
+
+
+		' Log the username.  This needs to have Enterprise Admins rights in order to do
+		' the authorize.
+
+		Set oADS = CreateObject("ADSystemInfo")
+		oLogging.CreateEntry "Currently running as " & oADS.UserName, LogTypeInfo
+
+
+		' Get the first IPv4 Address
+
+		Set dicIP = oEnvironment.ListItem("IPAddress")
+		strIP = ""
+		For each tmpIP in dicIP.keys
+			If Left(tmpIP,4) = "169." then
+				oLogging.CreateEntry "Ignoring locally-administered IP address " & tmpIP, LogTypeInfo
+			ElseIf Left(tmpIP, 4) = "127." then
+				oLogging.CreateEntry "Ignoring loopback IP address " & tmpIP, LogTypeInfo
+			ElseIf Instr(tmpIP, ":") > 0 then
+				oLogging.CreateEntry "Ingoring IPv6 address " & tmpIP, LogTypeInfo
+			Else
+				strIP = tmpIP
+				oLogging.CreateEntry "Using IP address " & strIP & " for authorization", LogTypeInfo
+				Exit For
+			End if
+		Next
+		TestAndFail strIP <> "", 6402, "Locate IPv4 address for authorization"
+
+
+		' Get the computer's fully-qualified domain name
+
+		For Each oComputer in objWMI.InstancesOf("Win32_ComputerSystem")
+		
+			strFQDN = oComputer.DNSHostName & "." & oComputer.Domain
+			
+		Next
+		
+		oLogging.CreateEntry "Fully-qualified domain name is " & strFQDN, LogTypeInfo
+
+
+		' Enable logging to a file
+
+		AddCommand "set file open " & oLogging.LogPath & "\ZTIAuthorizeDHCP_netsh.log"
+
+
+		' Authorize the DHCP server
+		' See http://support.microsoft.com/kb/303351 for the details on this.
+
+		AddCommand "dhcp add server " & strFQDN & " " & strIP
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\netsh.exe") then
+			sCmd = oEnv("SystemRoot") & "\sysnative\netsh.exe -f " & oLogging.LogPath & "\ZTIAuthorizeDHCP.txt"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\system32\netsh.exe") then
+			sCmd = oEnv("SystemRoot") & "\system32\netsh.exe -f " & oLogging.LogPath & "\ZTIAuthorizeDHCP.txt"
+		Else
+			sCmd = "netsh.exe -f " & oLogging.LogPath & "\ZTIAuthorizeDHCP.txt"
+		End if
+		
+		' Execute the command
+		oLogging.CreateEntry "About to run: " & sCmd, LogTypeInfo
+		iRetval = oShell.Run(sCmd, 0, true)
+		TestAndFail iRetVal, 6401, "Authorized DHCP Server "
+
+
+
+	End Function
+
+	Sub AddCommand(sCmd)
+
+		Dim oCommands
+
+		oLogging.CreateEntry "Adding command: " & sCmd, LogTypeInfo
+		Set oCommands = oFSO.OpenTextFile(oLogging.LogPath & "\ZTIAuthorizeDHCP.txt", ForAppending, True)
+		oCommands.WriteLine sCmd
+		oCommands.Close
+
+	End Sub
+	
+End Class
+
+</script>
+</job>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      DeployWiz_Definition_ENU.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Main Client Deployment Wizard Defintion File
+' // 
+' // ***************************************************************************
+
+-->
+
+<Wizard>
+	<Global>
+		<CustomScript>DeployWiz_ProductKeyVista.vbs</CustomScript>
+	</Global>
+
+	<Pane id="ProductKey_Vista" title="Product Key">
+		<Body>
+		<![CDATA[
+		<H1>Specify the product key needed to install this operating system.</H1>
+		<table>
+			<tr>
+				<td>
+					<input type=radio name="SelectKey" id="PKRadio1" checked language=vbscript onclick=ValidateProductKey AccessKey=O>
+				</td>
+				<td>
+					<Label class="Larger" for=PKRadio1 language=vbscript >N<u class=larger>o</u> product key is required.</Label>
+				</td>
+			</tr>
+			<tr>
+				<td></td>
+				<td>
+					<div>The operating system being deployed does not require a product key because it will be activated using the Key Management Service.</div>
+				</td>
+			</tr>
+
+			<tr><td colspan=2>&nbsp;</td></tr>
+
+			<tr>
+				<td>
+					<input type=radio name="SelectKey" id="PKRadio2" language=vbscript onclick=ValidateProductKey AccessKey=M>
+				</td>
+				<td>
+					<Label class="Larger" for=PKRadio2 language=vbscript >Activate the machine with a <u class=larger>m</u>ultiple activation key (MAK).</Label>
+				</td>
+			</tr>
+			<tr>
+				<td></td>
+				<td>
+					<div>The operating system being deployed will not be able to activate via the Key Management Service, so a multiple activation key will activate
+					the computer over the internet.</div>
+					<br>
+					<div>Multiple <u>a</u>ctivation key: <label class=ErrMsg id=OverrideBlank>* Required (MISSING)</label><label class=ErrMsg id=OverrideInvalid>* Invalid product key</label></div>
+					<input type=text id="locOverrideProductKey" size=50 disabled language=vbscript onpropertychange=ValidateProductKey onblur=AssignProductKey AccessKey=A>
+				</td>
+			</tr>
+
+			<tr><td colspan=2>&nbsp;</td></tr>
+
+			<tr>
+				<td>
+					<input type=radio name="SelectKey" id="PKRadio3" language=vbscript onclick=ValidateProductKey AccessKey=U>
+				</td>
+				<td>
+					<Label class="Larger" for=PKRadio3 language=vbscript ><u class=larger>U</u>se a specific product key.</Label>
+				</td>
+			</tr>
+			<tr>
+				<td></td>
+				<td>
+					<div>This computer requires a specific license key for installation or retail activation.</div>
+					<br>
+					<div>P<u>r</u>oduct key: <label class=ErrMsg id=PKBlank>* Required (MISSING)</label><label class=ErrMsg id=PKInvalid>* Invalid product key</label></div>
+					<input type=text id="locProductKey" size=50 disabled language=vbscript onpropertychange=ValidateProductKey onblur=AssignProductKey AccessKey=R>
+				</td>
+			</tr>
+
+		</table>
+
+		<input type=hidden id=pKey name=ProductKey>
+		<input type=hidden id=oKey name=OverrideProductKey>
+
+		]]>
+		</Body>
+		<Initialization><![CDATA[InitializeProductKey]]></Initialization>
+		<Validation><![CDATA[ValidateProductKey]]></Validation>
+	</Pane>
+
+</Wizard>

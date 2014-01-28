@@ -1,0 +1,306 @@
+<job id="ZTIVHDCreate">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIVHDCreate.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Create a local VHD file, and mount as a disk.
+' // 
+' // Variables: 
+
+' //   VHDInputVariable      [ Input ]  - Name of Variable containing the target for the VHD file.
+' //   VHDOutputVariable     [ Input ]  - Name of variable to receive New Disk Index (Typically OSDDiskIndex for ZTIDiskPart.wsf).
+' //   VHDDisks              [Output ]  - Partition Index
+' //   VHDCreateFileName    (Optional)  - Name of VHD File to create ( "RANDOM" or "" to auto generate name )
+' //   VHDCreateDiffVHD     (Optional)  - Name of VHD Differencing Disk ( "RANDOM" to auto generate name )
+' //   VHDCreateSource      (Optional)  - Name of VHD File source to prepopulate the new VHD
+' //   VHDCreateSizeMax     (Optional)  - Maximum Size (in MB) of the VHD file (Default: 90% of parent disk)
+' //   VHDCreateType        (Optional)  - Creation Type of the VHD Disk Either FIXED or EXPANDABLE (Default: EXPANDABLE)
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIVHDCreate.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+CONST DEFAULT_VHD_EXTENSION       = ".VHD"
+CONST DEFAULT_VHD_DIFF_EXTENSION  = ".AVHD"
+CONST DEFAULT_VHD_FILE_PATH       = "\VHD\"
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIVHDCreate
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private sTargetDrive
+
+	Private Sub Class_Initialize
+
+		If oEnvironment.Item("VHDInputVariable") <> "" Then
+			If oEnvironment.Item(oEnvironment.Item("VHDInputVariable")) <> "" then
+				If mid(oEnvironment.Item(oEnvironment.Item("VHDInputVariable")),2,1) = ":" then
+					sTargetDrive = left(oEnvironment.Item(oEnvironment.Item("VHDInputVariable")),2)
+					oLogging.CreateEntry "Found Target Drive: " & sTargetDrive, LogTypeInfo
+				End if
+			End if
+		End if
+		If isempty(sTargetDrive) then
+			oLogging.CreateEntry "VHDInputVariable was not detected, fall back to GetFirstPossibleSystemDrive()", LogTypeInfo
+			
+			sTargetDrive = GetFirstPossibleSystemDrive
+		End if 
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim oWMIPreviousDisk
+		Dim sVDiskSource
+		Dim sVDiskFile
+		Dim sVDiskDiffVHD
+		Dim iRC
+		Dim oDrive
+		Dim oWMIDiskPart
+		Dim iFoundVHDDisk
+		Dim sParams
+		Dim iSize
+
+		oLogging.CreateEntry "---------------- Initialization ----------------", LogTypeInfo
+
+		oUtility.ForceRelativeDriveReCalc
+
+
+		' Get the list of previous disks
+
+		Set oWMIPreviousDisk = AllDiskDrives
+
+
+		'
+		' If VHDCreateSource is defined, find the file.
+		'
+
+		If oEnvironment.Item("VHDCreateSource") <> "" then
+
+			oLogging.CreateEntry "VHDCreateSource defined: " & oEnvironment.Item("VHDCreateSource") , LogTypeInfo
+
+			If left(oEnvironment.Item("VHDCreateSource"),2) = "\\" then
+				oUtility.ValidateConnection oEnvironment.Item("VHDCreateSource")
+			End if
+
+			If oFSO.FileExists( oEnvironment.Item("VHDCreateSource") ) then
+				sVDiskSource = oEnvironment.Item("VHDCreateSource")
+			Else
+				' Search for %VHDCreateSource%.
+				iRC = oUtility.FindFile ( oEnvironment.Item("VHDCreateSource"), sVDiskSource )
+				If iRC <> SUCCESS then
+					sVDiskSource = empty
+					' Search for %VHDCreateSource% on all drives.
+					for each oDrive in oFSO.Drives
+						If oDrive.isReady then
+							If oFSO.FileExists (AddDriveLetter ( oDrive.DriveLetter, oEnvironment.Item("VHDCreateSource")) ) then
+								sVDiskSource = AddDriveLetter ( oDrive.DriveLetter, oEnvironment.Item("VHDCreateSource"))
+								oLogging.CreateEntry "Found File: " & sVDiskSource , LogTypeInfo
+								exit for
+							End if
+						End if
+					next
+				End if
+			End if 
+
+			TestAndFail not isEmpty(sVDiskSource), 10301, "Verify source disk was found %VHDCreateSource%"
+		End if
+
+
+		'
+		' Create a random filename if necessary
+		'
+		If ucase(oEnvironment.Item("VHDCreateFileName")) = "RANDOM" or oEnvironment.Item("VHDCreateFileName") = "" then
+			oLogging.CreateEntry "Create a random VHD filename.", LogTypeInfo
+			sVDiskFile = DEFAULT_VHD_FILE_PATH & GenerateRandomVHD(DEFAULT_VHD_EXTENSION)
+		Else
+			sVDiskFile = oEnvironment.Item("VHDCreateFileName")
+		End if
+		
+
+		'
+		' Create and manage the path where the *.vhd file is created.
+		'
+		If oFSO.GetParentFolderName(sVDiskFile) = "" then
+			oLogging.CreateEntry "VHDCreateFileName does not specify a Directory. Prefix default directory: " & DEFAULT_VHD_FILE_PATH, LogTypeInfo
+			sVDiskFile = DEFAULT_VHD_FILE_PATH & sVDiskFile
+		End if
+
+		sVDiskFile = AddDriveLetter ( sTargetDrive , sVDiskFile )
+		oUtility.VerifyPathExists oFSO.GetParentFolderName(sVDiskFile)
+		oLogging.CreateEntry "Ready to deploy to: " & sVDiskFile , LogTypeInfo
+
+		'
+		' Create the VHD File
+		'
+		set oDrive = new ZTIDiskPartition
+		oDrive.Drive =  sTargetDrive
+		TestAndFail not isempty(oDrive.Drive), 10311, "Verify Win32_LogicalDrive is available"
+		oLogging.CreateEntry "Found Logical Drive of size " & FormatLargeSize(oDrive.oWMIDiskPart.Size), LogTypeInfo
+		iSize = clng(oDrive.oWMIDrive(False).FreeSpace /1024/1024 * 80/100 )    ' 80% as MB
+		If isNumeric(oEnvironment.Item("VHDCreateSizePercent")) then
+			If 95 >= oEnvironment.Item("VHDCreateSizePercent") then
+				iSize = clng(oDrive.oWMIDrive(False).FreeSpace /1024/1024 *  int(oEnvironment.Item("VHDCreateSizePercent"))/100 ) 
+			End if
+		ElseIf isNumeric(oEnvironment.Item("VHDCreateSizeMax")) then
+			If clng(oDrive.oWMIDrive(False).FreeSpace /1024/1024 * 95/100 ) >= clng( oEnvironment.Item("VHDCreateSizeMax") ) then
+				iSize = clng(oEnvironment.Item("VHDCreateSizeMax"))
+			End if
+		End if
+		If ucase(oEnvironment.Item("VHDCreateType")) = "FIXED" then
+			sParams = "TYPE=FIXED MAXIMUM=" & iSize
+		Else
+			sParams = "TYPE=EXPANDABLE MAXIMUM=" & iSize
+		End if
+
+
+		outility.safesleep 20000
+		oLogging.ReportProgress "About to Create VHD File (May take several minutes)...", 10
+		If sVDiskSource <> "" then
+			RunDiskPart array( "CREATE VDISK FILE=""" & sVDiskFile & """  " & sParams & " SOURCE=""" & sVDiskSource & """" )
+		Else
+			RunDiskPart array( "CREATE VDISK FILE=""" & sVDiskFile & """  " & sParams )
+		End if
+		TestAndFail oFSO.FileExists(sVDiskFile), 10302, "Verify file was created: " & sVDiskFile
+
+
+		'
+		' If there is a Differencing Disk, then create the Differencing disk.
+		'
+
+		If oEnvironment.Item("VHDCreateDiffVHD") <> "" then
+			oLogging.ReportProgress "Attach Differencing Disk...", 70
+			If ucase(oEnvironment.Item("VHDCreateDiffVHD")) = "RANDOM" then
+				' Create a random name
+				oEnvironment.Item("VHDCreateDiffVHD") = GenerateRandomVHD(DEFAULT_VHD_DIFF_EXTENSION)
+			End if
+
+			' Differencing Disks must be in the same folder as the parent VHD for Boot to VHD.
+			sVDiskDiffVHD = oFSO.BuildPath ( oFSO.GetParentFolderName( sVDiskFile ) , oFSO.GetFileName( oEnvironment.Item("VHDCreateDiffVHD") ) )
+
+			TestAndFail ucase(sVDiskFile) <> ucase(sVDiskDiffVHD), 10303, "Verify Diff file is not the same name as the Parent: [" & sVDiskFile & "] <> [" & sVDiskDiffVHD & "]"
+
+			RunDiskPart array( "CREATE VDISK FILE=""" & sVDiskDiffVHD & """  PARENT=""" & sVDiskFile & """" )
+			sVDiskFile = sVDiskDiffVHD
+			TestAndFail oFSO.FileExists(sVDiskFile), 10303, "Verify file was created: " & sVDiskFile
+		End if
+
+
+		'
+		' Now mount the Virtual Disk.
+		'
+		oLogging.ReportProgress "Mount Virtual Disk...", 80
+		RunDiskPart array( "select vdisk file=""" & sVDiskFile & """", "attach vdisk", "exit" )
+
+
+		'
+		' Find the new Disk Number from the VHD file mounted.
+		'
+		oLogging.ReportProgress "Cleanup...", 90
+		iFoundVHDDisk = FindNewDisk ( oWMIPreviousDisk )
+		If oEnvironment.Item("VHDOutputVariable") <> "" then
+			oEnvironment.Item(oEnvironment.Item("VHDOutputVariable")) = iFoundVHDDisk
+		End if
+		oEnvironment.Item("VHDDisks") = oEnvironment.Item("VHDDisks") & " " & iFoundVHDDisk
+		
+		oUtility.ClearRelativeDriveLetters
+
+		Main = SUCCESS
+
+	End Function
+
+
+	'//----------------------------------------------------------------------------
+	'//  Support routines
+	'//----------------------------------------------------------------------------
+
+
+	Function FindNewDisk ( oWMIPreviousDisks )
+
+		Dim oWMINewDisks
+		Dim oWMIDiskOld
+		Dim oWMIDiskNew
+		Dim bFoundMatch
+
+		oLogging.CreateEntry "Find a new Disk created by mounting a VHD file.", LogTypeInfo
+
+		set oWMINewDisks = AllDiskDrives
+		TestandFail oWMIPreviousDisks.Count + 1 = oWMINewDisks.Count, 10310, "Verify that the DIsk COunt increased by 1: " & oWMIPreviousDisks.Count & "    " & oWMINewDisks.Count
+
+		For each oWMIDiskNew in oWMINewDisks
+			bFoundMatch = false
+
+			For each oWMIDiskOld in oWMIPreviousDisks
+				If oWMIDiskOld.Path_ = oWMIDiskNew.Path_ and oWMIDiskOld.PNPDeviceID = oWMIDiskNew.PNPDeviceID then
+					bFoundMatch = true
+					exit for
+				End if
+			next
+
+			If bFoundMatch then
+				' Disk was present before VHD DIsk was mounted, Skip...
+			Elseif not isEmpty(FindNewDisk) then
+				oLogging.CreateEntry "Another disk found: " & oWMIDiskNew.Path_  & " VS. " & FindNewDisk, LogTypeInfo
+			Else
+				oLogging.CreateEntry "Found new disk: " & oWMIDiskNew.Path_  & vbNewLine & oWMIDiskNew.PNPDeviceID, LogTypeInfo
+				FindNewDisk = oWMIDiskNew.Index
+			End if
+		next
+
+		TestandFail not isEmpty(FindNewDisk), 10303, "Verify that a new disk was created."
+
+	End Function
+
+	Function GenerateRandomVHD ( sExtension ) 
+
+		If oEnvironment.Item("TaskSequenceID") <> "" then
+			GenerateRandomVHD = oFSO.GetBaseName(oEnvironment.Item("TaskSequenceID") & "_" & oFSO.GetTempName) & sExtension
+		Else
+			GenerateRandomVHD = oFSO.GetBaseName(oFSO.GetTempName) & sExtension
+		End if
+
+	End function 
+
+
+	Function AddDriveLetter ( sNewDriveLetter, sExistingPath )
+
+		If left(sExistingPath,2) = "\\" then
+			' do not search using UNC paths
+		ElseIf asc(ucase(left(sExistingPath,1))) >= asc("A") and asc(ucase(left(sExistingPath,1))) <= asc("Z") and  mid(sExistingPath,2,2) = ":\" then
+			AddDriveLetter = left(sNewDriveLetter,1) & mid(sExistingPath,2)
+		Elseif left(sExistingPath,1) = "\" then
+			AddDriveLetter = left(sNewDriveLetter,1) & ":" & sExistingPath
+		Else
+			AddDriveLetter = left(sNewDriveLetter,1) & ":\" & sExistingPath
+		End if
+	End function
+
+
+End class
+
+
+	</script>
+</job>

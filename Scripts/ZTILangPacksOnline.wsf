@@ -1,0 +1,118 @@
+<job id="ZTILangPacksOnline">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTILangPacksOnline.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Install Language Packs while in the full OS
+' // 
+' // Usage:     cscript.exe [//nologo] ZTILangPacksOnline.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+' No global constants needed
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTILangPacksOnline
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+	Dim oXMLPackageList
+	Dim sPlatform
+
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+	Private Sub Class_Initialize
+
+	End Sub
+	
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim sLpkSetup
+		Dim sCmd
+		Dim rc
+		Dim oDirectory
+		Dim oFile
+		Dim iRetVal
+		Dim sRootPath
+		Dim sFolderName
+
+
+		' If not the required OS, log a non-fatal error and continue
+
+		If Left(oEnvironment.Item("OSVersion"),3) < "6.0" or oEnvironment.Item("OSVersion") = "WinPE" then
+			oLogging.CreateEntry "Language Packs can only be installed from within Windows Vista, Windows Server 2008, or later OSes", LogTypeError
+			Main = Success
+			Exit Function
+		End if
+			
+
+		' Find lpksetup.exe.  First check system32, then sysnative (only valid on a 64-bit OS running
+		' in a WOW 32-bit process), and finally hope that it is somewhere in the path.
+
+		If oFSO.FileExists(oEnv("SystemRoot") & "\system32\lpksetup.exe") then
+			sLpkSetup = oEnv("SystemRoot") & "\system32\cmd.exe /c lpksetup.exe"
+		ElseIf oFSO.FileExists(oEnv("SystemRoot") & "\sysnative\lpksetup.exe") then
+			sLpkSetup = oEnv("SystemRoot") & "\sysnative\cmd.exe /c lpksetup.exe"
+		Else
+			sLpkSetup = "cmd.exe /c lpksetup.exe"
+		End if
+
+
+		sRootPath = ".\"
+
+		oLogging.CreateEntry "Searching for Language Packs to install",LogTypeInfo
+		For each oDirectory in oFSO.GetFolder(sRootPath).Subfolders
+			For each oFile in oDirectory.Files
+				If UCase(Right(oFile.Name, 4)) = ".CAB" then
+
+					sFolderName = oFile.ParentFolder
+					oLogging.CreateEntry "Found language Pack to install in folder " & sFolderName,LogTypeInfo
+					oLogging.CreateEntry "Installing Language Pack",LogTypeInfo
+					sCmd = sLpkSetup & " /i * /p " & sFolderName & " /s"
+					iRetVal = oUtility.RunWithHeartbeat(sCmd)
+					TestAndLog iRetVal, "Online language pack installation. Folder Name: " & sFolderName
+						
+				End if
+			Next
+		Next
+
+		Main = Success
+
+	End Function
+
+End Class
+
+	</script>
+</job>

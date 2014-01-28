@@ -1,0 +1,52 @@
+<job id="BDD_autorun">
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      BDD_autorun.xml
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Simple dialog for MDT Autorun
+' // 
+' // Usage:     Only called from autorun.inf on removable media
+' // 
+' // ***************************************************************************
+
+Option Explicit
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+Const WelcomeMessage1 = "You have inserted a Windows Deployment Disk/Drive."
+Const WelcomeMessage2 = "Press OK to continue with this installation, otherwise Cancel."
+Const WelcomeHeader1  = "Auto-Run Windows Deployment"
+
+'//----------------------------------------------------------------------------
+'//  Main 
+'//----------------------------------------------------------------------------
+
+	Dim oShell
+
+	'
+	' Get Confirmation
+	'
+
+	Set oShell = CreateObject("WScript.Shell")
+
+	If oShell.Popup( WelcomeMessage1 & vbNewLine & WelcomeMessage2, 15, WelcomeHeader1, 1 or 64) = 1 then
+
+		oShell.Run "cscript.exe //nologo """ & WScript.ScriptFullName & "\..\LiteTouch.vbs""",,FALSE
+
+	End if
+
+
+	</script>
+</job>
+

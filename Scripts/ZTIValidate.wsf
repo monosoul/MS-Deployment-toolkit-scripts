@@ -1,0 +1,276 @@
+<job id="ZTIValidate">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript" src="ZTIDiskUtility.vbs"/>
+	<script language="VBScript">
+
+' // ***************************************************************************
+' // 
+' // Copyright (c) Microsoft Corporation.  All rights reserved.
+' // 
+' // Microsoft Deployment Toolkit Solution Accelerator
+' //
+' // File:      ZTIValidate.wsf
+' // 
+' // Version:   6.1.2373.0
+' // 
+' // Purpose:   Ensure that it is safe for the deployment to continue
+' // 
+' // Usage:     cscript.exe [//nologo] ZTIValidate.wsf [/debug:true]
+' // 
+' // ***************************************************************************
+
+Option Explicit
+RunNewInstance
+
+
+'//----------------------------------------------------------------------------
+'//  Global Constants
+'//----------------------------------------------------------------------------
+
+
+
+
+'//----------------------------------------------------------------------------
+'//  Main Class
+'//----------------------------------------------------------------------------
+
+Class ZTIValidate
+
+	'//----------------------------------------------------------------------------
+	'//  Class instance variable declarations
+	'//----------------------------------------------------------------------------
+
+	Dim iRetVal
+
+	Dim sDrive
+	
+
+	'//----------------------------------------------------------------------------
+	'//  Constructor to initialize needed global objects
+	'//----------------------------------------------------------------------------
+
+
+	Private Sub Class_Initialize
+
+		If Ucase(oEnvironment.Item("DeploymentType")) <> "NEWCOMPUTER" Then
+			sDrive = oUtility.GetOSTargetDriveLetter
+		End If
+
+	End Sub
+	
+	'//----------------------------------------------------------------------------
+	'//  Main routine
+	'//----------------------------------------------------------------------------
+
+	Function Main
+
+		Dim iRetVal
+		Dim iImageSize, iNeededSize, iTotalSize, dMultiplier
+		Dim oAssoc, oAssocs
+		Dim iProcessorSpeed, iMemory
+
+		iRetVal = Success
+
+
+		'//----------------------------------------------------------------------------
+		'//  Abort if this is a server OS
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentType") = "REFRESH" then
+
+			' This should only run in the full OS, skipped when DeploymentType=NEWCOMPUTER
+
+			If UCase(oEnvironment.Item("VerifyOS")) = "CLIENT" then
+
+				If UCase(oEnvironment.Item("IsServerOS")) = "TRUE" then
+					oLogging.CreateEvent 41044, LogTypeError, "ERROR - Attempting to deploy a client operating system to a machine running a server operating system.", Array()
+					oLogging.ReportFailure "ERROR - Attempting to deploy a client operating system to a machine running a server operating system.", 9801
+				End if
+
+			ElseIf UCase(oEnvironment.Item("VerifyOS")) = "SERVER" then
+
+
+				If UCase(oEnvironment.Item("IsServerOS")) <> "TRUE" then
+					oLogging.CreateEvent 41045, LogTypeError, "ERROR - Attempting to deploy a server operating system to a machine running a client operating system.", Array()
+					oLogging.ReportFailure "ERROR - Attempting to deploy a server operating system to a machine running a client operating system.", 9802
+				End if
+
+			Else
+
+				oLogging.CreateEntry "VerifyOS property not set, OS check bypassed", LogTypeInfo
+
+			End if
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Abort if "OSInstall" flag is set to something other than "Y"
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Exists("OSInstall") then
+			If UCase(Left(oEnvironment.Item("OSInstall"), 1)) <> "Y" then
+				oLogging.CreateEvent 41046, LogTypeError, "ERROR - Machine is not authorized for upgrading (OSInstall=" & oEnvironment.Item("OSInstall") & "), aborting.", Array()
+				oLogging.ReportFailure "ERROR - Machine is not authorized for upgrading (OSInstall=" & oEnvironment.Item("OSInstall") & "), aborting.", 9803
+			Else
+				oLogging.CreateEntry "OSInstall flag is set, install is allowed.", LogTypeInfo
+			End if
+		Else
+			oLogging.CreateEntry "OSInstall flag is not set, validation check bypassed.", LogTypeInfo
+		End if
+
+		
+		'//----------------------------------------------------------------------------
+		'//  Abort if trying to Refresh from a higher level OS to a lower level OS
+		'//----------------------------------------------------------------------------
+		If oEnvironment.Item("DeploymentType") = "REFRESH" Then
+			If oEnvironment.Item("ImageBuild") <> "" Then
+				If oEnvironment.Item("ImageBuild") < oEnvironment.Item("OSCurrentVersion") Then
+					oLogging.ReportFailure "Error - Performing a Refresh from a newer OS Version to an older OS Version is not supported.  You must perform a NewComputer deployment, aborting", 9808
+				End If
+			Else
+				oLogging.CreateEntry "ImageBuild could not be determined, assuming ConfigMgr deployment", LogTypeInfo
+			End If
+		End If
+
+		'//----------------------------------------------------------------------------
+		'//  Abort if trying to Refresh to a different partition
+		'//----------------------------------------------------------------------------
+		If oEnvironment.Item("DeploymentType") = "REFRESH" and ucase(oEnvironment.Item("DestinationOSRefresh")) <> "OKTOUSEOTHERDISKANDPARTITION" Then
+			If ucase(sDrive) <> ucase(oEnv("SystemDrive")) Then
+				oLogging.ReportFailure "Error - Performing a Refresh to a partition that does not match the current OS partition is not supported.  You must perform a NewComputer deployment, aborting", 9809
+			End If
+		End If
+		
+		'//----------------------------------------------------------------------------
+		'//  Make sure this machine meets the minimum requirements
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("ImageMemory") <> "" then
+			iMemory = CSng(oEnvironment.Item("ImageMemory")) - 64  ' Allow 64MB shared video memory
+		Else
+			iMemory = 448  ' Assume Vista, 512MB, allow for 64MB shared video memory
+		End if
+
+		oLogging.CreateEntry "Compare the current processor speed with the speed requested [" + oEnvironment.Item("ImageProcessorSpeed") + "] = [" + oEnvironment.Item("ProcessorSpeed") + "].", LogTypeInfo
+		If oEnvironment.Item("ImageProcessorSpeed") <> "" then
+			iProcessorSpeed = CSng(oEnvironment.Item("ImageProcessorSpeed")) - 10  ' Allow for rounding/"creative math"
+		Else
+			iProcessorSpeed = 790  ' Assume Vista, 800MHz, allow for 10MHz rounding/"creative math"
+		End if
+        
+		oLogging.CreateEntry "ImageProcessorSpeed set to : " & iProcessorSpeed & ".", LogTypeInfo
+
+		If oEnvironment.Exists("Memory") then
+			If CSng(oEnvironment.Item("Memory")) < iMemory then  ' Allow for 64MB shared video memory on a 512MB machine
+				oLogging.CreateEvent 41047, LogTypeError, "ERROR - " & oEnvironment.Item("Memory") & "MB of memory is insufficient.  At least " & iMemory & "MB of memory is required.", Array()
+				oLogging.ReportFailure "ERROR - " & oEnvironment.Item("Memory") & "MB of memory is insufficient.  At least " & iMemory & "MB of memory is required.", 9804
+			End if
+		End if
+		oLogging.CreateEntry "Computer has sufficient memory.", LogTypeInfo
+
+		If oEnvironment.Item("IsVM") <> "True" and oEnvironment.Exists("ProcessorSpeed") then
+			If CSng(oEnvironment.Item("ProcessorSpeed")) < iProcessorSpeed then  ' Allow for rounding/"creative math"
+				oLogging.CreateEvent 41048, LogTypeError, "ERROR - Processor speed of " & oEnvironment.Item("ProcessorSpeed") & "MHz is insufficient.  At least a " & iProcessorSpeed & "MHz processor is required.", Array()
+				oLogging.CreateEntry "NOTE: Please ensure this machine is connected to AC power before running this script.", LogTypeError
+				oLogging.ReportFailure "ERROR - Processor speed of " & oEnvironment.Item("ProcessorSpeed") & "MHz is insufficient.  At least a " & iProcessorSpeed & "MHz processor is required.", 9805
+			End if
+		End if
+		oLogging.CreateEntry "Computer has sufficient processor speed.", LogTypeInfo
+
+
+		'//----------------------------------------------------------------------------
+		'// Find or estimate the image size
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Exists("ImageSize") then
+			iImageSize = oEnvironment.Item("ImageSize")
+			oLogging.CreateEntry "Using specified ImageSize = " & iImageSize, LogTypeInfo
+		Else
+
+			' Determine the multiplier
+
+			If oEnvironment.Exists("ImageSizeMultiplier") then
+				dMultiplier = CSng(oEnvironment.Item("ImageSizeMultiplier"))
+				oLogging.CreateEntry "Using specified ImageSizeMultiplier = " & dMultiplier, LogTypeInfo
+			Else
+				dMultiplier = 2.5
+				oLogging.CreateEntry "Using default ImageSizeMultiplier = " & dMultiplier, LogTypeInfo
+			End if
+
+
+			' Guess at the expanded image size using the WIM file size and multiplier
+
+			If oFSO.FileExists(oEnvironment.Item("OSDPACKAGEPATH") & "\OS.WIM") then
+				iImageSize = (Int(oFSO.GetFile(oEnvironment.Item("OSDPACKAGEPATH") & "\OS.WIM").Size / 1048576) + 1) * dMultiplier
+				oLogging.CreateEntry "Estimated size of image (assuming " & dMultiplier & "X compression) = " & iImageSize, LogTypeInfo
+			Else
+				iImageSize = 7168  ' Throw a SWAG guess of 7GB
+				oLogging.CreateEntry "WARNING - Cannot determine image size, guessing 7GB", LogTypeWarning
+			End if
+
+		End if
+
+
+		'//----------------------------------------------------------------------------
+		'//  Based on the scenario and image size, determine the needed size
+		'//----------------------------------------------------------------------------
+
+		Select Case oEnvironment.Item("DeploymentType")
+		Case "REFRESH"
+
+			' Calc total required space, allowing 150MB for WinPE, logs, etc., and 3GB for Setup.
+
+			iNeededSize = iImageSize + 150 + 3000
+			oLogging.CreateEntry "Estimated total space needed on " & sDrive & " partion for image, Windows PE, and logs = " & iNeededSize, LogTypeInfo
+
+
+			' See if enough total space is available (assuming most of the drive will be cleaned off before calling setup)
+
+			On Error Resume Next  ' Might fail if no C: drive yet
+			iTotalSize = Int(oFSO.GetDrive(sDrive).TotalSize / 1048576) - 1  ' Round down
+			If Err then
+				oLogging.CreateEntry "WARNING - Unable to detect size of the " & sDrive & " drive, assuming enough space is available.", LogTypeWarning
+				Err.Clear
+			Else
+				oLogging.CreateEntry "Total space available on " & sDrive & " drive = " & iTotalSize, LogTypeInfo
+
+				If iTotalSize > iNeededSize then
+					oLogging.CreateEntry "Enough space is available on " & sDrive & ".", LogTypeInfo
+				Else
+					oLogging.CreateEvent 41049, LogTypeError, "ERROR - insufficient space is available on " & sDrive & ".  An additional " & CStr(iNeededSize - iTotalSize) & "MB is required.", Array()
+					oLogging.ReportFailure "ERROR - insufficient space is available on " & sDrive & ".  An additional " & CStr(iNeededSize - iTotalSize) & "MB is required.", 9807
+				End if
+			End if
+			On Error Goto 0
+
+		Case "NEWCOMPUTER"
+
+			oLogging.CreateEntry "Assuming that the drive has enough disk space (once cleaned)", LogTypeInfo
+
+		Case Else
+
+			oLogging.CreateEntry "WARNING - Unable to determine deployment type, assuming it is OK to continue", LogTypeWarning
+
+		End Select
+
+
+		'//----------------------------------------------------------------------------
+		'//  For refreshes, make sure the drive isn't compressed
+		'//----------------------------------------------------------------------------
+
+		If oEnvironment.Item("DeploymentType") = "REFRESH" then
+
+			oLogging.CreateEntry "Ensuring root of " & sDrive & " drive is not compressed.", LogTypeInfo
+			oUtility.RunWithConsoleLoggingAndHidden "compact /u " & sDrive
+
+		End if
+
+		Main = Success
+
+	End Function
+
+End Class
+
+	</script>
+</job>
