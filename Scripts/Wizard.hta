@@ -402,19 +402,19 @@ Function SetPane(strPane, bValidate)
 	ElseIf oNodes.Length = oNodeIndex then
 		' Since we can Positivley tell that this is the last page, change the label to "Finish"
 		' We use Finish because it can use the same Access key as Next "N".
-		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick>Fi<U>n</U>ish</button>"
+		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick>Готово(<U>n</U>)</button>"
 	Else
-		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>"
+		ButtonNext.outerHTML = "<button accesskey=N id=buttonNext language=vbscript onclick=ButtonNextClick>Далее(<U>N</U>)</button>"
 	End if
 
 	If oCurrentNode.selectSingleNode("ButtonCancel/Label") is nothing then
-		ButtonCancel.outerHTML = "<button accesskey=C id=buttonCancel language=vbscript onclick=ButtonCancelClick><U>C</U>ancel</button>"
+		ButtonCancel.outerHTML = "<button accesskey=C id=buttonCancel language=vbscript onclick=ButtonCancelClick>Отмена(<U>C</U>)</button>"
 	Else
 		ButtonCancel.outerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"ButtonCancel/Label")
 	End if
 
 	If oCurrentNode.selectSingleNode("ButtonPrev/Label") is nothing then
-		ButtonPrev.outerHTML = "<button accesskey=B id=buttonPrev onclick=ButtonBackClick>B</U>ack</button>"
+		ButtonPrev.outerHTML = "<button accesskey=B id=buttonPrev onclick=ButtonBackClick>Назад(<U>B</U>)</button>"
 	Else
 		ButtonPrev.outerHTML = oUtility.SelectSingleNodeString(oCurrentNode,"ButtonPrev/Label")
 	End if
@@ -742,7 +742,7 @@ End sub
 
 
 Sub ButtonCancelClick
-	If Msgbox("Are you sure you want to cancel?",4,"Cancel wizard?") = vbYES Then
+	If Msgbox("Вы уверены, что хотите прервать мастер?",4,"Прервать работу мастера?") = vbYES Then
 		window.Close
 	End If
 End sub

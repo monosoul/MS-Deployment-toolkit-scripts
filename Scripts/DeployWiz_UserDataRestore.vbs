@@ -18,8 +18,8 @@ Option Explicit
 
 Function InitializeUserDataRestoreLocation
 
-	' If the user data location is AUTO or NETWORK, reset it to none for bare metal
-
+	' If the user data location is AUTO or NETWORK, reset it to none for bare metal	
+	
 	If UCase(Property("UserDataLocation")) = "AUTO" or UCase(Property("UserDataLocation")) = "NETWORK" then
 		oProperties("UserDataLocation") = "NONE"
 	End if
@@ -33,19 +33,26 @@ Function InitializeUserDataRestoreLocation
 		StatePath.value = Property("UserDataLocation")
 		UDRadio2.click
 	End if
+	
+	if not isempty("UDShare") then
+		StatePathT.value = Property("UUID")
+		UDRadio2.click
+	End if
 
 End Function
 
 
 '''''''''''''''''''''''''''''''''''''
 '  Validate UserData Location
-'
+'''''''''''''''''''''''''''''''''''''
 
 Function ValidateUserDataRestoreLocation
 
+	StatePath.value = Property("UDShare")+"\"+StatePathT.value
+
 	UDRadio2.Value = StatePath.Value
 
-	document.GetElementByID("StatePath").Disabled = not UDRadio2.Checked
+	document.GetElementByID("StatePathT").Disabled = not UDRadio2.Checked
 	document.GetElementByID("StatePathBrowse").Disabled = not UDRadio2.Checked
 
 	InvalidPath.style.display = "none"

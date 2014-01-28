@@ -387,7 +387,7 @@ Class ZTIGather
 	Function GetAssetInfo
 
 	 	Dim bIsLaptop, bIsDesktop, bIsServer, bOnBattery, bFoundBattery, bFoundAC
-		Dim sAssetTag, sSerialNumber, sMake, sModel, sProduct, sUUID, sMemory, sArchitecture, sProcessorSpeed, sCapableArchitecture
+		Dim sAssetTag, sSerialNumber, sMake, sMBMake, sModel, sMBModel, sProduct, sUUID, sMemory, sArchitecture, sProcessorSpeed, sCapableArchitecture
 
 		Dim objResults, objInstance
 		Dim i
@@ -557,6 +557,25 @@ Class ZTIGather
 			oLogging.CreateEntry "Unable to determine model via WMI.", LogTypeInfo
 		End if
 
+		' Get the manufacturer and product from the Win32_BaseBoard class
+
+		Set objResults = objWMI.InstancesOf("Win32_BaseBoard")
+		For each objInstance in objResults
+
+			If not IsNull(objInstance.Manufacturer) then
+				sMBMake = Trim(objInstance.Manufacturer)
+			End if
+			If not IsNull(objInstance.Product) then
+				sMBModel = Trim(objInstance.Product)
+			End if
+
+		Next
+		If sMBMake = "" then
+			oLogging.CreateEntry "Unable to determine baseboard manufacturer via WMI.", LogTypeInfo
+		End if
+		If sMBModel = "" then
+			oLogging.CreateEntry "Unable to determine baseboard model via WMI.", LogTypeInfo
+		End if
 
 		' Get the UUID from the Win32_ComputerSystemProduct class
 
@@ -621,6 +640,28 @@ Class ZTIGather
 			bOnBattery = False
 		End if
 
+		'//--------------------------------
+		'//Checking manufacturer and model
+		'//--------------------------------
+		If sMake = "System manufacturer" and (not IsEmpty(sMBMake)) then
+			sMake = sMBMake
+		End if
+		If sModel = "System Product Name" and (not IsEmpty(sMBModel)) then
+			sModel = sMBModel
+		End if
+		
+		'//--------------------------------
+		'//Replace special symbols with "_"
+		'//--------------------------------
+		sModel = Replace(sModel,"\","_")
+		sModel = Replace(sModel,"/","_")
+		sModel = Replace(sModel,"?","_")
+		sModel = Replace(sModel,":","_")
+		sModel = Replace(sModel,"*","_")
+		sModel = Replace(sModel,">","_")
+		sModel = Replace(sModel,"<","_")
+		sModel = Replace(sModel,"|","_")
+		
 		oEnvironment.Item("AssetTag") = sAssetTag
 		oEnvironment.Item("SerialNumber") = sSerialNumber
 		oEnvironment.Item("Make") = sMake

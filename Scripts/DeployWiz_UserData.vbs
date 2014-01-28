@@ -56,6 +56,10 @@ Function InitializeUserDataLocation
 		UDRadio1.Disabled = TRUE
 
 	End if
+	
+	if not isempty("UDShare") then
+		DataPathT.Value = Property("UUID")
+	End if
 
 	ValidateUserDataLocation
 
@@ -70,10 +74,12 @@ Function ValidateUserDataLocation
 
 	Dim USMTTagFile
 	InvalidPath.style.display = "none"
+	
+	DataPath.Value = property("UDShare")+"\"+DataPathT.Value
 
 	UDRadio2.Value = DataPath.Value
 	AllowLocal.Disabled = not UDRadio1.Checked
-	document.GetElementByID("DataPath").Disabled = not UDRadio2.Checked
+	document.GetElementByID("DataPathT").Disabled = not UDRadio2.Checked
 	document.GetElementByID("DataPathBrowse").Disabled = not UDRadio2.Checked
 
 	ValidateUserDataLocation = ParseAllWarningLabels

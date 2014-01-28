@@ -22,15 +22,15 @@
 		<CustomScript>DeployWiz_SelectTS.vbs</CustomScript>
 	</Global>
 
-	<Pane id="SelectTaskSequence" title="Task Sequence">
+	<Pane id="SelectTaskSequence" title="Задача">
 		<Condition><![CDATA[UCASE(Property("SkipTaskSequence"))<>"YES" ]]></Condition>
 		<Body>
 			<![CDATA[
-				<H1>Select a task sequence to execute on this computer.</H1>
-				<label class=ErrMsg id=Bad_OSGUID>Bad Task Sequence Item (Missing OS)</label>
+				<H1>Выберите задачу для выполнения.</H1>
+				<label class=ErrMsg id=Bad_OSGUID>Ошибочная задача (Отсутствует О.С.)</label>
 
 				<div class=TreeList id=TSListBox style="height: expression( GetDynamicListBoxSize(this) );">
-<label class=errmsg style="display: inline;" >No task sequences are available (TaskSequences.xml does not exist, is empty, or is inaccessible)</label>
+<label class=errmsg style="display: inline;" >Нет доступных задач (Файл TaskSequences.xml не существует, пуст или недоступен)</label>
 					<!-- List goes here -->
 
 				</div>

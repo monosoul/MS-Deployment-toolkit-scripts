@@ -22,7 +22,7 @@
 		<CustomScript>DeployWiz_ComputerName.vbs</CustomScript>
 	</Global>
 
-	<Pane id="ComputerName" title="Computer Details">
+	<Pane id="ComputerName" title="Сведения о компьютере">
 		<Body>
 		<![CDATA[
 
@@ -31,12 +31,12 @@
 		<td style="width:1px;">
 			<img src="DeployWiz_Computer.png">
 		</td>
-		<td style="width: 160px;"><span class=Larger>Compu<u class=Larger>t</u>er name:</span></td>
+		<td style="width: 160px;"><span class=Larger>Имя компью<u class=Larger>т</u>ера:</span></td>
 		<td align="left">
 			<input type=text id="OSDComputerName" name=OSDComputerName size=15 language=vbscript onpropertychange=ValidateComputerName AccessKey=t />
-			<label class=ErrMsg for=OSDComputerName>* Required</label>
-			<label class=ErrMsg id=InvalidChar>Invalid characters!</label>
-			<label class=ErrMsg id=TooLong>Maximum of 15 characters!</label>
+			<label class=ErrMsg for=OSDComputerName>* Заполнение обязательно</label>
+			<label class=ErrMsg id=InvalidChar>Не верные символы!</label>
+			<label class=ErrMsg id=TooLong>Максимум 15 символов!</label>
 		</td>
 	</tr>
 </table>

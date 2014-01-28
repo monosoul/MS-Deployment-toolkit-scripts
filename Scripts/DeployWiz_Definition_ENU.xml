@@ -20,7 +20,7 @@
 <Wizard>
 	<Global>
 
-		<CustomStatement><![CDATA[ document.title =  "Windows Deployment Wizard" ]]> </CustomStatement>
+		<CustomStatement><![CDATA[ document.title =  "Мастер развёртывания Windows" ]]> </CustomStatement>
 
 		<Initialization>DeployWiz_Initialization.vbs</Initialization>
 		<Validation>DeployWiz_Validation.vbs</Validation>

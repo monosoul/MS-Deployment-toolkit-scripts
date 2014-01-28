@@ -24,10 +24,10 @@
 		<CustomStatement><![CDATA[ IsThereAtLeastOneApplicationPresent ]]> </CustomStatement>
 	</Global>
 
-	<Pane id="ApplicationSelection" title="Applications">
+	<Pane id="ApplicationSelection" title="Приложения">
 		<Body>
 		<![CDATA[
-      <H1>Select one or more applications to install.</H1>
+      <H1>Выберите приложения для установки.</H1>
 	  
 	  
 		<div class=TreeList id=AppListBox style="height: expression( GetDynamicListBoxSize(this) );">
@@ -49,17 +49,17 @@
 		<Condition><![CDATA[UCase(Property("SkipAdminPassword"))<>"YES" and UCase(Property("DeploymentType"))<>"REPLACE"]]></Condition>
 		<Body>
 		<![CDATA[
-      <H1>Administrator Password.</H1>
+      <H1>Пароль администратора.</H1>
 
 
-<p>This password will be used for logging onto the computer after a restart.</p>
-Administrator Password: <br/>
+<p>Этот пароль будет использован для авторизации после разворачивания ОС.</p>
+Пароль администратора: <br/>
 <input type=password id="Password1" name="AdminPassword"  size=20 language=vbscript onchange=ValidatePassword onpropertychange=ValidatePassword>
-<label class=ErrMsg For=Password1>* Required (MISSING)</label></br>
+<label class=ErrMsg For=Password1>* Заполнение обязательно</label></br>
 
-Please confirm Administrator Password: <br/>
+Пожалуйста, повторите пароль администратора: <br/>
 <input type=password id="Password2" size=20 language=vbscript onchange=ValidatePassword onpropertychange=ValidatePassword>
-<label id=NonMatchPassword class=ErrMsg>ERROR! Passwords do not match!</label></br>
+<label id=NonMatchPassword class=ErrMsg>ОШИБКА! Пароли не совпадают!</label></br>
 </p>
 
 			]]>

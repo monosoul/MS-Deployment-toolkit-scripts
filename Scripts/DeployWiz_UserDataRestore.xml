@@ -22,10 +22,10 @@
 		<CustomScript>DeployWiz_UserDataRestore.vbs</CustomScript>
 	</Global>
 
-	<Pane id="UserDataRestore" title="User Data (Restore)">
+	<Pane id="UserDataRestore" title="Пользовательские данные (Восстановление)">
 		<Body>
          <![CDATA[
-<H1>Specify whether to restore user data.</H1>
+<H1>Укажите действие с пользовательскими данными.</H1>
 <table>
 
 	<tr>
@@ -33,13 +33,13 @@
 			<input type=radio name="UserDataLocation" id="UDRadio1" checked value="NONE" language=vbscript onclick=ValidateUserDataRestoreLocation  AccessKey=r>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio1 language=vbscript >Do not <u class=larger>r</u>estore user data and settings.</Label>
+			<Label class="Larger" for=UDRadio1 language=vbscript >Не восстанавливать пользовательские данные и настройки.(<u class=larger>r</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<p>This is not a replacement computer, so there are no user data and settings to restore.</p>
+			<p>Компьютер не заменяли, так что восстанавливать пользовательские данные и настройки не нужно.</p>
 		</td>
 	</tr>
 
@@ -51,18 +51,19 @@
 			<input type=radio name="UserDataLocation" id="UDRadio2" Value="NETWORK" language=vbscript onclick=ValidateUserDataRestoreLocation  AccessKey=S>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+			<Label class="Larger" for=UDRadio2 language=vbscript >Укажите местоположение.(<u class=larger>s</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<div>Restore user data and settings from a network location created from a different machine.</div>
+			<div>Восстановить пользовательские данные и настройки</div>
 			<br>
-			<div>L<u>o</u>cation:</div>
-			<input type=text id="StatePath" name="StatePath" size=65 disabled language=vbscript AccessKey=O>
-			<input type="button" id="StatePathBrowse" style="display: none;" onclick="javascript:StatePath.value = BrowseForFolder(StatePath.value);" Value="Browse" disabled /><br/>(Full network path to previously saved USMT data files).<br/>
-			<div><label class=ErrMsg for=StatePath>* Required (MISSING)</label>  <label class=ErrMsg id=InvalidPath>* Invalid path!</label><br/></div>
+			<div>Катал<u>o</u>г:</div>
+			<input type=text id="StatePathT" name="StatePathT" size=65 disabled language=vbscript AccessKey=O>
+			<input type=hidden id="StatePath" name="StatePath" size=65 disabled language=vbscript AccessKey=O>
+			<input type="button" id="StatePathBrowse" style="display: none;" onclick="javascript:StatePath.value = BrowseForFolder(StatePath.value);" Value="Browse" disabled /><br/>(Имя каталога, содержащего сохранённые ранее пользовательские данные и настройки).<br/>
+			<div><label class=ErrMsg for=StatePathT>* Заполнение обязательно</label>  <label class=ErrMsg id=InvalidPath>* Не верный путь!</label><br/></div>
 		</td>
 	</tr>
 

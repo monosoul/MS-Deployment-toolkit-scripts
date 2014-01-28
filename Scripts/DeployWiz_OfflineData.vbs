@@ -214,19 +214,19 @@ Function InitializeOfflineDataPage
 
 	If g_IsDisk0Bitlocked = true and g_hasSomethingBeenChecked <> true then
 
-		oLogging.CreateEntry "A supported previous version of Windows was not found on this computer. Suspend BitLocker to save files and settings.", LogTypeInfo
+		oLogging.CreateEntry "Поддерживаемая версия Windows не была найдена на этом компьютере. Suspend BitLocker to save files and settings.", LogTypeInfo
 		UDRadio1.Checked = true
 		UDRadio2.disabled = true
 		MSITTExtInfo.style.display = "inline"
-		MSITText.InnerHTML = "A supported previous version of Windows was not found on this computer. Suspend BitLocker to save files and settings."
+		MSITText.InnerHTML = "Поддерживаемая версия Windows не была найдена на этом компьютере. Suspend BitLocker to save files and settings."
 
 	ElseIf g_WindowsCount = 0 then
 
-		oLogging.CreateEntry "A supported previous version of Windows was not found on this computer. Data and settings cannot be restored.", LogTypeInfo
+		oLogging.CreateEntry "Поддерживаемая версия Windows не была найдена на этом компьютере. Данные и настройки не могут быть восстановлены.", LogTypeInfo
 		UDRadio1.Checked = true
 		UDRadio2.disabled = true
 		MSITTExtInfo.style.display = "inline"
-		MSITText.InnerHTML = "A supported previous version of Windows was not found on this computer. Data and settings cannot be restored."
+		MSITText.InnerHTML = "Поддерживаемая версия Windows не была найдена на этом компьютере. Данные и настройки не могут быть восстановлены."
 
 	Else
 

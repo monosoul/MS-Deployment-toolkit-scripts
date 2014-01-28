@@ -22,26 +22,26 @@
 		<CustomScript>DeployWiz_UserData.vbs</CustomScript>
 	</Global>
 
-	<Pane id="UserData" title="User Data">
+	<Pane id="UserData" title="Данные пользователей">
 		<Body>
          <![CDATA[
-<H1>Specify where to save your data and settings.</H1>
+<H1>Выберите, где сохранить данные и настройки.</H1>
 <table>
 	<tr>
 		<td>
 			<input type=radio name="UserDataLocation" id="UDRadio1"  value="AUTO" language=vbscript onclick=ValidateUserDataLocation  AccessKey=A>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio1 language=vbscript ><u class=larger>A</u>utomatically determine the location.</Label>
+			<Label class="Larger" for=UDRadio1 language=vbscript >Выбрать <u class=larger>а</u>втоматически.</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<div>Let the system determine the best location based on available disk space.</div>
+			<div>Позволить системе выбрать автоматически на основании доступного дискового пространства.</div>
 			<br>
 			<input type=checkbox id="AllowLocal" checked onclick="javascript:UDRadio1.value= this.checked?'AUTO':'NETWORK';" AccessKey=L>
-			<Label for=AllowLocal>Allow data and settings to be stored <u>l</u>ocally when possible.</Label>
+			<Label for=AllowLocal>Позволить сохранить данные и настройки локально (когда возможно) (<u>l</u>).</Label>
 		</td>
 	</tr>
 
@@ -52,17 +52,19 @@
 			<input type=radio name="UserDataLocation" id="UDRadio2" Value="SpecifyLocation" language=vbscript onclick=ValidateUserDataLocation  AccessKey=S>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+			<Label class="Larger" for=UDRadio2 language=vbscript >Указать местоположение.(<u class=larger>s</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<div>Save all configuration information for later restoration.</div>
+			<div>Сохранить все данные и настройки для дальнейшего восстановления.</div>
 			<br>
-			<div>L<u>o</u>cation:  <label class=ErrMsg for=DataPath>* Required (MISSING)</label><label class=ErrMsg id=InvalidPath>* Invalid local path!</label></div>
-			<input type=text id="DataPath" size=65 disabled language=vbscript onpropertychange=ValidateUserDataLocation AccessKey=O>
-			<input type="button" id="DataPathBrowse" onclick="javascript:DataPath.value = BrowseForFolder(DataPath.value);" Value="Browse" disabled />
+			<div>Катал<u>o</u>г:  <label class=ErrMsg for=DataPath>* Заполнение обязательно</label><label class=ErrMsg id=InvalidPath>* Не верный локальный путь!</label></div>
+			<input type=text id="DataPathT" size=65 disabled language=vbscript onpropertychange=ValidateUserDataLocation AccessKey=O>
+			<input type=hidden id="DataPath" size=65 disabled language=vbscript onpropertychange=ValidateUserDataLocation AccessKey=O>
+			<input type="hidden" id="DataPathBrowse" disabled />
+			<br/>(Имя каталога, куда будут сохранены пользовательские данные и настройки).<br/>
 		</td>
 	</tr>
 
@@ -73,13 +75,13 @@
 			<input type=radio name="UserDataLocation" id="UDRadio3" checked value="NONE" language=vbscript onclick=ValidateUserDataLocation  AccessKey=V>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio3 language=vbscript >Do not sa<u class=larger>v</u>e data and settings.</Label>
+			<Label class="Larger" for=UDRadio3 language=vbscript >Не сохранять данные и настройки.(<u class=larger>v</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<p>All user data and settings will be lost.</p>
+			<p>Все пользовательские данные и настройки будут утеряны.</p>
 		</td>
 	</tr>
 </table>

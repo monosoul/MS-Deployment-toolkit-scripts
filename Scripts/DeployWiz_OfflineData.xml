@@ -22,10 +22,10 @@
 		<CustomScript>DeployWiz_OfflineData.vbs</CustomScript>
 	</Global>
 
-	<Pane id="OfflineUSMT" title="Move Data and Settings">
+	<Pane id="OfflineUSMT" title="Переместить данные и настройки">
 		<Body>
          <![CDATA[
-<H1>Move data and settings from a previous version of Windows?</H1>
+<H1>Переместить данные и настройки из предыдущей установки Windows?</H1>
 <table width=100%>
 
 	<tr>
@@ -33,15 +33,15 @@
 			<input type=radio name="USMTOfflineMigration" id="UDRadio1" checked value="FALSE" language=vbscript onclick=NoOffline AccessKey=r>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio1 language=vbscript >Do not move use<u class=larger>r</u> data and settings.</Label>
+			<Label class="Larger" for=UDRadio1 language=vbscript >Не перемещать данные и настройки.(<u class=larger>r</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<p>Install a new operating system without retaining any data or settings from any existing operating systems.</p>
+			<p>Установить новую систему без сохранения каких-либо данных и настроек из установленных систем.</p>
 			<input type=checkbox id="KeepPartitions" AccessKey=K>
-			<Label for=KeepPartitions><u>K</u>eep existing partitions (do not format or partition)</Label>
+			<Label for=KeepPartitions>Сохранить существующие разделы (не форматировать) (<u>k</u>)</Label>
 		</td>
 	</tr>
 	
@@ -52,13 +52,13 @@
 			<input type=radio name="USMTOfflineMigration" id="UDRadio2" Value="TRUE" language=vbscript onclick=OnlineEnable AccessKey=S>
 		</td>
 		<td>
-			<Label class="Larger" for=UDRadio2 language=vbscript >Move u<u class=larger>s</u>er data and settings.</Label>
+			<Label class="Larger" for=UDRadio2 language=vbscript >Переместить пользовательские данные и настройки.(<u class=larger>s</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<p>Capture all the user data and settings from an existing operating system on the computer and restore them into the new operating system.</p>
+			<p>Сохранить все пользовательские данные и настройки из установленной на компьютере системы и восстановить их после установки новой системы.</p>
 		</td>
 	</tr>
 	<tr><td colspan=2>&nbsp;</td></tr>
@@ -67,7 +67,7 @@
 		<td>
 		
 			<div id=MoreThanOneVolume style="display:none;">
-				<p>Setup has detected more than one partition.<br/> Select the partition that contains the operating system and data.</p>
+				<p>Мастер обнаружил более одного раздела.<br/> Выберите раздел, содержащий операционную систему и данные.</p>
 			
 				<div id=AppListBox style="width: 95%; border: 1px solid; background-color: white; ">
 					<table id=disktable width=100% >

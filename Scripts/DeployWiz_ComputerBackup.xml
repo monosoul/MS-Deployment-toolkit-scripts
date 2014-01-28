@@ -22,25 +22,25 @@
 		<CustomScript>DeployWiz_ComputerBackup.vbs</CustomScript>
 	</Global>
 
-	<Pane id="ComputerBackup" title="Computer Backup">
+	<Pane id="ComputerBackup" title="Бэкап компьютера">
 		<Body><![CDATA[
-<H1>Specify where to save a complete computer backup.</H1>
+<H1>Укажите путь, куда сохранить полный бэкап компьютера.</H1>
 <table>
 	<tr>
 		<td>
 			<input type=radio name="ComputerBackupLocation" id="CBRadio1" value="AUTO" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=A>
 		</td>
 		<td>
-			<Label class="Larger" for=CBRadio1 language=vbscript ><u class=larger>A</u>utomatically determine the location.</Label>
+			<Label class="Larger" for=CBRadio1 language=vbscript ><u class=larger>А</u>втоматически определить местоположение.</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<div>Let the system determine the best location based on available disk space.</div>
+			<div>Позволить системе выбрать автоматически на основании доступного дискового пространства.</div>
 			<br>
 			<input type=checkbox id="AllowLocal" checked language=vbscript onclick="javascript:CBRadio1.value= this.checked?'AUTO':'NETWORK';" AccessKey=L>
-			<Label for=AllowLocal>Allow the computer backup to be stored <u>l</u>ocally when possible.</Label>
+			<Label for=AllowLocal>Позволить сохранить бэкап компьютера локально (когда возможно).(<u>l</u>)</Label>
 		</td>
 	</tr>
 
@@ -51,17 +51,17 @@
 			<input type=radio name="ComputerBackupLocation" id="CBRadio2" Value="SpecifyLocation" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=S>
 		</td>
 		<td>
-			<Label class="Larger" for=CBRadio2 language=vbscript ><u class=larger>S</u>pecify a location.</Label>
+			<Label class="Larger" for=CBRadio2 language=vbscript >Указать местоположение.(<u class=larger>s</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<div>Save the computer backup to the specified location.</div>
+			<div>Сохранить бэкап компьютера в указанном месте.</div>
 			<br>
-			<div>L<u>o</u>cation: <label class=ErrMsg for=DataPath>* Required (MISSING)</label></div>
+			<div>L<u>o</u>cation: <label class=ErrMsg for=DataPath>* Заполнение обязательно</label></div>
 			<input type=text id="DataPath" size=65 disabled language=vbscript onpropertychange=ValidateComputerBackupLocation AccessKey=O>
-			<input type="button" id="DataPathBrowse" language=vbscript onclick="javascript:DataPath.value = BrowseForFolder(DataPath.value);" Value="Browse" disabled />
+			<input type="button" id="DataPathBrowse" language=vbscript onclick="javascript:DataPath.value = BrowseForFolder(DataPath.value);" Value="Обзор" disabled />
 		</td>
 	</tr>
 
@@ -72,13 +72,13 @@
 			<input type=radio name="ComputerBackupLocation" id="CBRadio3" checked value="NONE" language=vbscript onclick=ValidateComputerBackupLocation  AccessKey=K>
 		</td>
 		<td>
-			<Label class="Larger" for=CBRadio3 language=vbscript >Do not bac<u class=larger>k</u> up the existing computer.</Label>
+			<Label class="Larger" for=CBRadio3 language=vbscript >Не делать бэкап компьютера.(<u class=larger>k</u>)</Label>
 		</td>
 	</tr>
 	<tr>
 		<td></td>
 		<td>
-			<p>No backup should be performed.</p>
+			<p>Делать бэкап не нужно.</p>
 		</td>
 	</tr>
 </table>

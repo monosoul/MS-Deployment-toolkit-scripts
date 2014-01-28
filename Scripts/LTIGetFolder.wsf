@@ -47,7 +47,7 @@ Class LTIGetFolder
 
 		Set oFolder = nothing
 		on error resume next
-		Set oFolder = CreateObject("Shell.Application").BrowseForFolder(0, "Select Folder Containing Files", 0, "")
+		Set oFolder = CreateObject("Shell.Application").BrowseForFolder(0, "Select Folder Containing Files", &H10&, "")
 		on error goto 0
 		
 		If oFolder is nothing then
