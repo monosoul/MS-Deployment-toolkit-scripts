@@ -23,16 +23,16 @@
 	</Global>
 
 
-	<Pane id="Ready" title="Welcome">
+	<Pane id="Ready" title="Добро пожаловать">
 
 		<ButtonNext>
-			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>]]></Label>
+			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick>Далее(<U>N</U>)</button>]]></Label>
 		</ButtonNext>
 		<ButtonCancel>
-			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" ><U>R</U>eboot</button>]]></Label>
+			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" >Перезагрузка(<U>R</U>)</button>]]></Label>
 		</ButtonCancel>
 		<ButtonPrev>
-			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >B</U>ack</button>]]></Label>
+			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >Назад(<U>B</U>)</button>]]></Label>
 		</ButtonPrev>
 
 		<Initialization><![CDATA[ WelcomeWizard_CustomInitialization ]]> </Initialization>
@@ -47,9 +47,9 @@
 
 
 			<button style="background: inherit; background-image: url(btnsel.png); width: 600px; height: 70px; border: 0px; font: 20px; font-weight: bold;" id="buttonItem1" 
-			title="Run the Microsoft Deployment Wizard to install an Operating System or perform other task."
+			title="Запустить мастер развёртывания для установки ОС или другой задачи."
 			onmouseover="RunSelCmd" onmouseout="RunSelCmd" onclick="RunSelCmd" ondblclick="RunSelCmd" onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
-			>Run the Deployment Wizard <br/>to install a new Operating System</button>
+			>Запустить мастер развёртывания <br/>для установки ОС или другой задачи.</button>
 			<br/>
 
 			<button style="background: inherit; background-image: url(btnout.png); width: 600px; height: 70px;border: 0px;font: 20px; font-weight: bold;" id="buttonItem2" 
@@ -65,9 +65,9 @@
 			<br/>
 
 			<button style="background: inherit; background-image: url(btnout.png); width: 600px; height: 70px;border: 0px;font: 20px; font-weight: bold;" id="buttonItem4" 
-			title="For advanced users"
+			title="Для продвинутых пользователей"
 			onmouseover="RunSelCmd" onmouseout="RunSelCmd"  onclick="RunSelCmd" ondblclick="RunSelCmd"  onactivate="RunSelCmd" ondeactivate="RunSelCmd" 
-			>Exit to Command Prompt</button>
+			>Выйти в командную строку</button>
 
 			</div>
 
@@ -77,15 +77,15 @@
 
 			<table>
 			<tr>
-				<td align=right>Keyboard Layout</td>
+				<td align=right>Раскладка клавиатуры</td>
 				<td> <select id=WinPEKeyboard Name=KeyboardLocalePE style="width: 400px;" >
 					<option value="0409:00000409">United States</option>
 					</select>
 				</td>
 			</tr>
 			<tr>
-				<td align=right>Configure Static IP</td>
-				<td><input type=button value="Configure with Static IP Address..." onclick="configureStaticIP" title="For advanced users" /></td>
+				<td align=right>Настроить статический IP</td>
+				<td><input type=button value="Настроить статический IP адрес..." onclick="configureStaticIP" title="For advanced users" /></td>
 			</tr>
 			</table>
 

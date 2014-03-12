@@ -26,13 +26,13 @@
 	<Pane id="Initializing" title="Processing Custom Settings">
 
 		<ButtonNext>
-			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick><U>N</U>ext</button>]]></Label>
+			<Label><![CDATA[<button accesskey=N style="display='none';" id=buttonNext language=vbscript onclick=ButtonNextClick>Далее(<U>N</U>)</button>]]></Label>
 		</ButtonNext>
 		<ButtonCancel>
-			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" ><U>R</U>eboot</button>]]></Label>
+			<Label><![CDATA[<button accesskey=R id=buttonCancel language=vbscript onclick=window.close style="display='none';" >Перезагрузка(<U>R</U>)</button>]]></Label>
 		</ButtonCancel>
 		<ButtonPrev>
-			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >B</U>ack</button>]]></Label>
+			<Label><![CDATA[<button accesskey=B id=buttonPrev onclick="ButtonBackClick" style='display: none;' >Назад(<U>B</U>)</button>]]></Label>
 		</ButtonPrev>
 		<HideBackNext>true</HideBackNext>
 

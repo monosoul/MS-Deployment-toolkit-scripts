@@ -195,20 +195,24 @@ Function ForceLCase( sPropertyName )
 End function
 
 Function SetNewLanguage
-	If oProperties.exists("UserLocale") then
-		oProperties.remove "UserLocale"
+	If (Not UILanguage.Disabled = true) then
+		If oProperties.exists("UserLocale") then
+			oProperties.remove "UserLocale"
+		End if
+		SetNewLanguageEx UILanguage.Value
+		SetNewLocale
 	End if
-	SetNewLanguageEx UILanguage.Value
-	SetNewLocale
 End Function
 
 
 Function SetNewLocale
-	If instr(1,UserLocale_Edit.Value,";",vbTextCompare) <> 0 then
-		If oProperties.exists("KeyboardLocale") then
-			oProperties.remove "KeyboardLocale"
+	If (Not KeyboardLocale_Edit.Disabled = true) then
+		If instr(1,UserLocale_Edit.Value,";",vbTextCompare) <> 0 then
+			If oProperties.exists("KeyboardLocale") then
+				oProperties.remove "KeyboardLocale"
+			End if
+			SetNewLocaleEx mid(UserLocale_Edit.Value,1,instr(1,UserLocale_Edit.Value,";",vbTextCompare) - 1)
 		End if
-		SetNewLocaleEx mid(UserLocale_Edit.Value,1,instr(1,UserLocale_Edit.Value,";",vbTextCompare) - 1)
 	End if
 End Function
 
@@ -426,18 +430,22 @@ Function Locale_Validation
 	iSplit = instr(1,UserLocale_Edit.Value,";",vbTextCompare)
 	TestAndLog iSplit <> 0 , "Verify UserLocale_Edit contains Comma Delimiter: " & UserLocale_Edit.Value
 
-	If instr(1,UserLocale_Edit.Value,";",vbTextCompare) <> 0 then
-		' Take the LCID From UserLocale and add it to the KeyboardLocale
-		KeyboardLocale.Value = UserLocale_Edit.Value & ":" & KeyboardLocale_Edit.Value
-	Else
-		' Some kind of Error
-		KeyboardLocale.Value = right("0000" & hex(GetLocale),4) & ":" & KeyboardLocale_Edit.Value
+	If (Not KeyboardLocale_Edit.Disabled = true) then
+		If instr(1,UserLocale_Edit.Value,";",vbTextCompare) <> 0 then
+			' Take the LCID From UserLocale and add it to the KeyboardLocale
+			KeyboardLocale.Value = UserLocale_Edit.Value & ":" & KeyboardLocale_Edit.Value
+		Else
+			' Some kind of Error
+			KeyboardLocale.Value = right("0000" & hex(GetLocale),4) & ":" & KeyboardLocale_Edit.Value
+		End if
 	End if
 	
-	If iSplit <> 0 then
-		UserLocale.Value = mid(UserLocale_Edit.Value,1,instr(1,UserLocale_Edit.Value,";",vbTextCompare) - 1)
-	Else
-		UserLocale.Value = UserLocale_Edit.Value
+	If (Not UserLocale_Edit.Disabled = true) then
+		If iSplit <> 0 then
+			UserLocale.Value = mid(UserLocale_Edit.Value,1,instr(1,UserLocale_Edit.Value,";",vbTextCompare) - 1)
+		Else
+			UserLocale.Value = UserLocale_Edit.Value
+		End if
 	End if
 
 End function

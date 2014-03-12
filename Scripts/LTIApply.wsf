@@ -1140,7 +1140,7 @@ Class LTIApply
 				' Don't remove protected folders
 
 				Select Case lcase(oFolder.Name)
-				Case "minint", "recycler", "system volume information", "deploy", "drivers", "_smstasksequence", "smstslog", "sysprep"
+				Case "backedup_shares", "minint", "recycler", "system volume information", "deploy", "drivers", "_smstasksequence", "smstslog", "sysprep"
 					oLogging.CreateEntry "Skipping " & oFolder.Path, LogTypeInfo
 				
 				Case Else

@@ -207,6 +207,146 @@
 	<property id="OSDAdapter0TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
 	<property id="OSDAdapter0UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
 	<property id="OSDAdapter0IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter1Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter1MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter1EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter1IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter1SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter1Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter1GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter1DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter1DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter1EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter1EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter1EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter1EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter1TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter1WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter1EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter1TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter1UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter1IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter2Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter2MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter2EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter2IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter2SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter2Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter2GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter2DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter2DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter2EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter2EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter2EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter2EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter2TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter2WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter2EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter2TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter2UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter2IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter3Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter3MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter3EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter3IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter3SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter3Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter3GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter3DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter3DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter3EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter3EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter3EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter3EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter3TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter3WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter3EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter3TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter3UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter3IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter4Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter4MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter4EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter4IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter4SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter4Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter4GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter4DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter4DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter4EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter4EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter4EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter4EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter4TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter4WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter4EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter4TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter4UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter4IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter5Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter5MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter5EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter5IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter5SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter5Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter5GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter5DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter5DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter5EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter5EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter5EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter5EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter5TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter5WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter5EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter5TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter5UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter5IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter6Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter6MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter6EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter6IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter6SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter6Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter6GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter6DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter6DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter6EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter6EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter6EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter6EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter6TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter6WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter6EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter6TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter6UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter6IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
+	
+	<property id="OSDAdapter7Name" type="string" overwrite="false" description="If present, match all settings to the adapter with this name." />
+	<property id="OSDAdapter7MacAddress" type="string" overwrite="false" description="If present, match all settings to the adapter with this MAC address." />
+	<property id="OSDAdapter7EnableDHCP" type="string" overwrite="false" description="If false, will disable DHCP, otherwise True (true if blank)." />
+	<property id="OSDAdapter7IPAddressList" type="string" overwrite="false" description="Comma delimited list of IPAddress Lists" />
+	<property id="OSDAdapter7SubnetMask" type="string" overwrite="false" description="Comma delimited list of Subnet masks" />
+	<property id="OSDAdapter7Gateways" type="string" overwrite="false" description="Comma delimited list of Gateway cost metrics" />
+	<property id="OSDAdapter7GatewayCostMetric" type="string" overwrite="false" description="Comma delimited list of Gateway Cost MEtrics as either integers, or the string 'Automatic' (if empty, uses automatic)" />
+	<property id="OSDAdapter7DNSServerList" type="string" overwrite="false" description="Comma delimited list of DNS Servers" />
+	<property id="OSDAdapter7DNSSuffix" type="string" overwrite="false" description="DNS Suffix, example Frabrikam.com" />
+	<property id="OSDAdapter7EnableDNSRegistration" type="string" overwrite="false" description="True/False to enable DNS registration." />
+	<property id="OSDAdapter7EnableFullDNSRegistration" type="string" overwrite="false" description="True/False to enalbe Full DNS Registration" />
+	<property id="OSDAdapter7EnableLMHOSTS" type="string" overwrite="false" description="True/False to enable LMHosts" />
+	<property id="OSDAdapter7EnableWINS" type="string" overwrite="false" description="True/False to enable WINS" />
+	<property id="OSDAdapter7TcpipNetbiosOptions" type="string" overwrite="false" description="NetBIOS Options 0/DHCP/False, 1/True, or 2/Disable" />
+	<property id="OSDAdapter7WINSServerList" type="string" overwrite="false" description="Comma delimited list of WINS Servers" />
+	<property id="OSDAdapter7EnableTCPIPFiltering" type="string" overwrite="false" description="True/False to enable TCP/IP Filtering." />
+	<property id="OSDAdapter7TCPFilterPortList" type="string" overwrite="false" description="Comma delimited list of TCP Filters" />
+	<property id="OSDAdapter7UDPFilterPortList" type="string" overwrite="false" description="Comma delimited list of IDP Filters" />
+	<property id="OSDAdapter7IPProtocolFilterList" type="string" overwrite="false" description="Comma delimited list of IP Protocol FIlters" />
 
 	<property id="OSDDiskIndex" type="string" overwrite="false" description="Disk index used for Partitioning (Default is 0)" />
 	<property id="OSDPartitions" type="string" overwrite="false" description="Number of Partitions listed here (Default is None, max of 2, use Default configuration)" />

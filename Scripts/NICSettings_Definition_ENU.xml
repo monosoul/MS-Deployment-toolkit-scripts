@@ -25,7 +25,7 @@
 		<CustomStatement>
 			<![CDATA[
 
-		document.title =  "Network Adapter Configuration"
+		document.title =  "Настройка сетевого адаптера"
 
 		CleanNetworkSettings 0
 		oProperties.RemoveAll
@@ -173,14 +173,14 @@
 
 	<!-- ************************************************************** -->
 
-	<Pane id="Ready" title="Configure Network">
+	<Pane id="Ready" title="Настройка сети">
 
 		<Initialization><![CDATA[ InitializeNetworkDialog ]]> </Initialization>
 		<Validation><![CDATA[ ValidateNetworkDialog ]]> </Validation>
 		<Body>
 			<![CDATA[
 
-			<H1>Specify the static IP network settings to be used.<H1>
+			<H1>Укажите статические настройки сети, которые будут использоваться.<H1>
 
 			<span id=OSDAdapter0Display >
 				<table width=95% id=OSDAdapter0>
@@ -190,7 +190,7 @@
 						<input type=checkbox id=OSDAdapter0DHCP name=OSDAdapter0DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter0DHCP />Enable DHCP</label>
+						<label for=OSDAdapter0DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter0Description name="OSDAdapter0Description" size=50 value="0" />
 						
@@ -199,7 +199,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter0MacAddress name="OSDAdapter0MacAddress" size=30 title="Read Only" />
 						</td>
@@ -207,57 +207,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter0IPAddressList name="OSDAdapter0IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter0IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter0IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter0SubnetMask name="OSDAdapter0SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter0SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter0SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter0Gateways name="OSDAdapter0Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter0DNSServerList name="OSDAdapter0DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter0DNSSuffix name="OSDAdapter0DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter0WINSServerList name="OSDAdapter0WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					
@@ -276,7 +276,7 @@
 						<input type=checkbox id=OSDAdapter1DHCP name=OSDAdapter1DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter1DHCP />Enable DHCP</label>
+						<label for=OSDAdapter1DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter1Description name="OSDAdapter1Description" size=50 value="0" />
 						
@@ -285,7 +285,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter1MacAddress name="OSDAdapter1MacAddress" size=30 title="Read Only" />
 						</td>
@@ -293,57 +293,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter1IPAddressList name="OSDAdapter1IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter1IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter1IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter1SubnetMask name="OSDAdapter1SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter1SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter1SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter1Gateways name="OSDAdapter1Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter1DNSServerList name="OSDAdapter1DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter1DNSSuffix name="OSDAdapter1DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter1WINSServerList name="OSDAdapter1WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					
@@ -362,7 +362,7 @@
 						<input type=checkbox id=OSDAdapter2DHCP name=OSDAdapter2DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter2DHCP />Enable DHCP</label>
+						<label for=OSDAdapter2DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter2Description name="OSDAdapter2Description" size=50 value="0" />
 						
@@ -371,7 +371,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter2MacAddress name="OSDAdapter2MacAddress" size=30 title="Read Only" />
 						</td>
@@ -379,57 +379,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter2IPAddressList name="OSDAdapter2IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter2IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter2IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter2SubnetMask name="OSDAdapter2SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter2SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter2SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter2Gateways name="OSDAdapter2Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter2DNSServerList name="OSDAdapter2DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter2DNSSuffix name="OSDAdapter2DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter2WINSServerList name="OSDAdapter2WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					
@@ -448,7 +448,7 @@
 						<input type=checkbox id=OSDAdapter3DHCP name=OSDAdapter3DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter3DHCP />Enable DHCP</label>
+						<label for=OSDAdapter3DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter3Description name="OSDAdapter3Description" size=50 value="0" />
 						
@@ -457,7 +457,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter3MacAddress name="OSDAdapter3MacAddress" size=30 title="Read Only" />
 						</td>
@@ -465,57 +465,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter3IPAddressList name="OSDAdapter3IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter3IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter3IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter3SubnetMask name="OSDAdapter3SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter3SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter3SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter3Gateways name="OSDAdapter3Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter3DNSServerList name="OSDAdapter3DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter3DNSSuffix name="OSDAdapter3DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter3WINSServerList name="OSDAdapter3WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					
@@ -534,7 +534,7 @@
 						<input type=checkbox id=OSDAdapter4DHCP name=OSDAdapter4DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter4DHCP />Enable DHCP</label>
+						<label for=OSDAdapter4DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter4Description name="OSDAdapter4Description" size=50 value="0" />
 						
@@ -543,7 +543,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter4MacAddress name="OSDAdapter4MacAddress" size=30 title="Read Only" />
 						</td>
@@ -551,57 +551,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter4IPAddressList name="OSDAdapter4IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter4IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter4IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter4SubnetMask name="OSDAdapter4SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter4SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter4SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter4Gateways name="OSDAdapter4Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter4DNSServerList name="OSDAdapter4DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter4DNSSuffix name="OSDAdapter4DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter4WINSServerList name="OSDAdapter4WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					
@@ -620,7 +620,7 @@
 						<input type=checkbox id=OSDAdapter5DHCP name=OSDAdapter5DHCP checked value="True" onclick=EnumChkAll language="vbscript"/> 
 						</td>
 						<td colspan=2>
-						<label for=OSDAdapter5DHCP />Enable DHCP</label>
+						<label for=OSDAdapter5DHCP />Включить DHCP</label>
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 						<input disabled type=text id=OSDAdapter5Description name="OSDAdapter5Description" size=50 value="0" />
 						
@@ -629,7 +629,7 @@
 
 					<tr>
 						<td></td>
-						<td width=25%>Physical (MAC) Address:</td>
+						<td width=25%>Физический (MAC) адрес:</td>
 						<td  width=70%>
 						<input disabled type=text id=OSDAdapter5MacAddress name="OSDAdapter5MacAddress" size=30 title="Read Only" />
 						</td>
@@ -637,57 +637,57 @@
 
 					<tr>
 						<td></td>
-						<td>IP Address(es): </td>
+						<td>IP адрес(а): </td>
 						<td>
 						<input disabled type=text id=OSDAdapter5IPAddressList name="OSDAdapter5IPAddressList" size=30 
-							title="IP Address (Comma Delimited). Example: [192.168.1.50,192.168.100.52] " /> *
-						<label class=ErrMsg for=OSDAdapter5IPAddressList>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [192.168.1.50,192.168.100.52] " /> *
+						<label class=ErrMsg for=OSDAdapter5IPAddressList>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Subnet Mask(s): </td>
+						<td>Маска(и) подсети: </td>
 						<td>
 						<input disabled type=text id=OSDAdapter5SubnetMask name="OSDAdapter5SubnetMask" size=30  
-							title="IP Address (Comma Delimited). Example: [255.255.255.0,255.255.255.0] "/> * 
-						<label class=ErrMsg for=OSDAdapter5SubnetMask>* Required (MISSING)</label>
+							title="IP адрес(а) (разделённые запятой). Например: [255.255.255.0,255.255.255.0] "/> * 
+						<label class=ErrMsg for=OSDAdapter5SubnetMask>* Заполнение обязательно</label>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>Default Gateway(s):</td>
+						<td>Шлюз(ы) по умолчанию:</td>
 						<td>
 						<input type=text id=OSDAdapter5Gateways name="OSDAdapter5Gateways" size=30   
-							title="Default Gateway (Comma Delimited). Example: [192.168.1.1,192.168.100.1] " /> * 
+							title="Шлюз(ы) по умолчанию (разделённые запятой). Например: [192.168.1.1,192.168.100.1] " /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Server(s):</td>
+						<td>DNS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter5DNSServerList name="OSDAdapter5DNSServerList" size=30   
-							title="DNS Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11]" /> * 
+							title="Список DNS серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11]" /> * 
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>DNS Suffixes:</td>
+						<td>Суффиксы DNS:</td>
 						<td>
 						<input type=text id=OSDAdapter5DNSSuffix name="OSDAdapter5DNSSuffix" size=30 value="" 
-							title="DNS Suffix (Comma Delimited). Example: [fabrikam.com]"/>
+							title="Суффиксы DNS (разделённые запятой). Например: [fabrikam.com]"/>
 						</td>
 					</tr>
 
 					<tr>
 						<td></td>
-						<td>WINS Server(s):</td>
+						<td>WINS сервер(ы):</td>
 						<td>
 						<input type=text id=OSDAdapter5WINSServerList name="OSDAdapter5WINSServerList" size=30  
-							title="Wins Server List (Comma Delimited). Example: [192.168.1.10,192.168.100.11] " /> * 
+							title="Список Wins серверов (разделённых запятой). Например: [192.168.1.10,192.168.100.11] " /> * 
 						</td>
 					</tr>
 					

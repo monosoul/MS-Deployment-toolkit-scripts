@@ -22,7 +22,7 @@
 		<CustomScript>DeployWiz_LanguageUI.vbs</CustomScript>
 	</Global>
 
-	<Pane id="SelectLanguageUI" title="Locale and Time">
+	<Pane id="SelectLanguageUI" title="Язык и региональные стандарты">
 
 		<Initialization><![CDATA[ Locale_Initialization ]]> </Initialization>
 		<Initialization><![CDATA[ TimeZone_Initialization ]]> </Initialization>
@@ -33,12 +33,12 @@
 			<![CDATA[
 
 			<!-- Use the H1 Style for titles at the top of the page -->
-			<H1>Specify locale and time preferences.</H1>
+			<H1>Укажите параметры языка и региональных стандартов.</H1>
 
 			<table>
 
 			<tr><td colspan=2>
-			<H4>Language Settings</H4>
+			<H4>Настройки языковых параметров</H4>
 			</td></tr>
 
 			<tr valign=top>
@@ -48,17 +48,17 @@
 			</td>
 
 			<td width="100%">
-			<p>Language to install: <label class=ErrMsg id=UILanguage_Err>* Required (MISSING)</label></br>
+			<p>Язык для установки: <label class=ErrMsg id=UILanguage_Err>* Заполнение обязательно</label></br>
 			<SELECT NAME="UILanguage" class=WideEdit language="vbscript" onchange="SetNewLanguage" >
 			</SELECT>
 			</p>
 
-			<p>Time and currency format (Locale): <label class=ErrMsg id=UserLocale_Err>* Required (MISSING)</label></br>
+			<p>Формат времени и чисел: <label class=ErrMsg id=UserLocale_Err>* Заполнение обязательно</label></br>
 			<SELECT NAME="UserLocale_Edit" class=WideEdit language="vbscript" onchange="SetNewLocale" >
 			</SELECT>
 			</p>
 
-			<p>Keyboard layout: <label class=ErrMsg id=KeyboardLocale_Err>* Required (MISSING)</label></br>
+			<p>Раскладка клавиатуры: <label class=ErrMsg id=KeyboardLocale_Err>* Заполнение обязательно</label></br>
 			<SELECT NAME="KeyboardLocale_Edit" class=WideEdit>
 				<option value="0000041c">Albanian</option>
 				<option value="00000401">Arabic (101)</option>
@@ -233,7 +233,7 @@
 
 			<tr><td colspan=2>
 			<br>
-			<H4>Time Settings</H4>
+			<H4>Настройки времени</H4>
 			</td></tr>
 
 			<tr valign=top>
@@ -244,7 +244,7 @@
 
 			<td>
 
-			<p>Time zone: </br>
+			<p>Часовой пояс: </br>
 			<select id=TimeZoneList language=VBScript onchange="SetTimeZoneValue" class=wideedit>
 
 			<!--
@@ -257,107 +257,106 @@
 				TimeZoneDescription - This is the value displayed in the dialog box.
 			-->
 
-			<option value="085;GMT Standard Time">(UTC) Dublin, Edinburgh, Lisbon, London</option>
-			<option value="090;Greenwich Standard Time">(UTC) Monrovia, Reykjavik</option>
-			<option value="090;Morocco Standard Time">(UTC) Casablanca</option>
-			<option value="085;UTC">(UTC) Coordinated Universal Time</option>
-			<option value="095;Central Europe Standard Time">(UTC+01:00) Belgrade, Bratislava, Budapest, Ljubljana, Prague</option>
-			<option value="100;Central European Standard Time">(UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb</option>
-			<option value="105;Romance Standard Time">(UTC+01:00) Brussels, Copenhagen, Madrid, Paris</option>
-			<option value="113;W. Central Africa Standard Time">(UTC+01:00) West Central Africa</option>
-			<option value="110;W. Europe Standard Time">(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna</option>
-			<option value="135;Israel Standard Time">(UTC+02:00) Jerusalem</option>
-			<option value="120;Jordan Standard Time">(UTC+02:00) Amman</option>
-			<option value="120;Middle East Standard Time">(UTC+02:00) Beirut</option>
-			<option value="000;Syria Standard Time">(UTC+02:00) Damascus</option>
-			<option value="000;Turkey Standard Time">(UTC+02:00) Istanbul</option>
-			<option value="113;Namibia Standard Time">(UTC+02:00) Windhoek</option>
-			<option value="115;E. Europe Standard Time">(UTC+02:00) Nicosia</option>
-			<option value="120;Egypt Standard Time">(UTC+02:00) Cairo</option>
-			<option value="125;FLE Standard Time">(UTC+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius</option>
-			<option value="130;GTB Standard Time">(UTC+02:00) Athens, Bucharest</option>
-			<option value="140;South Africa Standard Time">(UTC+02:00) Harare, Pretoria</option>
-			<option value="150;Arab Standard Time">(UTC+03:00) Kuwait, Riyadh</option>
-			<option value="158;Arabic Standard Time">(UTC+03:00) Baghdad</option>
-			<option value="000;Kaliningrad Standard Time">(UTC+03:00) Kaliningrad, Minsk</option>
-			<option value="155;E. Africa Standard Time">(UTC+03:00) Nairobi</option>
-			<option value="160;Iran Standard Time">(UTC+03:30) Tehran</option>
-			<option value="165;Arabian Standard Time">(UTC+04:00) Abu Dhabi, Muscat</option>
-			<option value="170;Azerbaijan Standard Time">(UTC+04:00) Baku</option>
-			<option value="170;Caucasus Standard Time">(UTC+04:00) Yerevan</option>
-			<option value="170;Georgian Standard Time">(UTC+04:00) Tbilisi</option>
-			<option value="165;Mauritius Standard Time">(UTC+04:00) Port Louis</option>
-			<option value="145;Russian Standard Time">(UTC+04:00) Moscow, St. Petersburg, Volgograd</option>
-			<option value="175;Afghanistan Standard Time">(UTC+04:30) Kabul</option>
-			<option value="180;Ekaterinburg Standard Time">(UTC+05:00) Ekaterinburg</option>
-			<option value="185;Pakistan Standard Time">(UTC+05:00) Islamabad, Karachi</option>
-			<option value="185;West Asia Standard Time">(UTC+05:00) Tashkent</option>
-			<option value="190;India Standard Time">(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi</option>
-			<option value="200;Sri Lanka Standard Time">(UTC+05:30) Sri Jayawardenepura</option>
-			<option value="193;Nepal Standard Time">(UTC+05:45) Kathmandu</option>
-			<option value="195;Central Asia Standard Time">(UTC+06:00) Astana</option>
-			<option value="195;Bangladesh Standard Time">(UTC+06:00) Dhaka</option>
-			<option value="201;N. Central Asia Standard Time">(UTC+06:00) Novosibirsk</option>
-			<option value="203;Myanmar Standard Time">(UTC+06:30) Yangon (Rangoon)</option>
-			<option value="205;SE Asia Standard Time">(UTC+07:00) Bangkok, Hanoi, Jakarta</option>
-			<option value="207;North Asia Standard Time">(UTC+07:00) Krasnoyarsk</option>
-			<option value="210;China Standard Time">(UTC+08:00) Beijing, Chongqing, Hong Kong, Urumqi</option>
-			<option value="215;Singapore Standard Time">(UTC+08:00) Kuala Lumpur, Singapore</option>
-			<option value="227;Ulaanbaatar Standard Time">(UTC+08:00) Ulaanbaatar</option>
-			<option value="227;North Asia East Standard Time">(UTC+08:00) Irkutsk</option>
-			<option value="220;Taipei Standard Time">(UTC+08:00) Taipei</option>
-			<option value="225;W. Australia Standard Time">(UTC+08:00) Perth</option>
-			<option value="230;Korea Standard Time">(UTC+09:00) Seoul</option>
-			<option value="235;Tokyo Standard Time">(UTC+09:00) Osaka, Sapporo, Tokyo</option>
-			<option value="240;Yakutsk Standard Time">(UTC+09:00) Yakutsk</option>
-			<option value="250;Cen. Australia Standard Time">(UTC+09:30) Adelaide</option>
-			<option value="245;AUS Central Standard Time">(UTC+09:30) Darwin</option>
-			<option value="260;E. Australia Standard Time">(UTC+10:00) Brisbane</option>
-			<option value="255;AUS Eastern Standard Time">(UTC+10:00) Canberra, Melbourne, Sydney</option>
-			<option value="265;Tasmania Standard Time">(UTC+10:00) Hobart</option>
-			<option value="270;Vladivostok Standard Time">(UTC+10:00) Vladivostok</option>
-			<option value="275;West Pacific Standard Time">(UTC+10:00) Guam, Port Moresby</option>
-			<option value="280;Central Pacific Standard Time">(UTC+11:00) Solomon Is., New Caledonia</option>
-			<option value="285;Fiji Standard Time">(UTC+12:00) Fiji</option>
-			<option value="285;Kamchatka Standard Time">(UTC+12:00) Petropavlovsk-Kamchatsky - Old</option>
-			<option value="285;UTC+12">(UTC+12:00) Coordinated Universal Time+12</option>
-			<option value="290;New Zealand Standard Time">(UTC+12:00) Auckland, Wellington</option>
-			<option value="000;Magadan Standard Time">(UTC+12:00) Magadan</option>
-			<option value="300;Tonga Standard Time">(UTC+13:00) Nuku'alofa</option>
-			<option value="080;Azores Standard Time">(UTC-01:00) Azores</option>
-			<option value="083;Cape Verde Standard Time">(UTC-01:00) Cape Verde Is.</option>
-			<option value="075;Mid-Atlantic Standard Time">(UTC-02:00) Mid-Atlantic</option>
-			<option value="075;UTC-02">(UTC-02:00) Coordinated Universal Time-02</option>
-			<option value="065;E. South America Standard Time">(UTC-03:00) Brasilia</option>
-			<option value="073;Greenland Standard Time">(UTC-03:00) Greenland</option>
-			<option value="070;Argentina Standard Time">(UTC-03:00) Buenos Aires</option>
-			<option value="000;Bahia Standard Time">(UTC-03:00) Salvador</option>
-			<option value="070;Montevideo Standard Time">(UTC-03:00) Montevideo</option>
-			<option value="065;SA Eastern Standard Time">(UTC-03:00) Cayenne, Fortaleza</option>
-			<option value="060;Newfoundland Standard Time">(UTC-03:30) Newfoundland</option>
-			<option value="050;Atlantic Standard Time">(UTC-04:00) Atlantic Time (Canada)</option>
-			<option value="055;Central Brazilian Standard Time">(UTC-04:00) Cuiaba</option>
-			<option value="056;Pacific SA Standard Time">(UTC-04:00) Santiago</option>
-			<option value="055;Paraguay Standard Time">(UTC-04:00) Asuncion</option>
-			<option value="055;SA Western Standard Time">(UTC-04:00) Georgetown, La Paz, Manaus, San Juan</option>
-			<option value="055;Venezuela Standard Time">(UTC-04:30) Caracas</option>
-			<option value="035;Eastern Standard Time">(UTC-05:00) Eastern Time (US & Canada)</option>
-			<option value="045;SA Pacific Standard Time">(UTC-05:00) Bogota, Lima, Quito</option>
-			<option value="040;US Eastern Standard Time">(UTC-05:00) Indiana (East)</option>
-			<option value="025;Canada Central Standard Time">(UTC-06:00) Saskatchewan</option>
-			<option value="033;Central America Standard Time">(UTC-06:00) Central America</option>
-			<option value="020;Central Standard Time">(UTC-06:00) Central Time (US & Canada)</option>
-			<option value="030;Central Standard Time (Mexico)">(UTC-06:00) Guadalajara, Mexico City, Monterrey</option>
-			<option value="010;Mountain Standard Time">(UTC-07:00) Mountain Time (US & Canada)</option>
-			<option value="013;Mountain Standard Time (Mexico)">(UTC-07:00) Chihuahua, La Paz, Mazatlan</option>
-			<option value="015;US Mountain Standard Time">(UTC-07:00) Arizona</option>
-			<option value="004;Pacific Standard Time">(UTC-08:00) Pacific Time (US & Canada)</option>
-			<option value="004;Pacific Standard Time (Mexico)">(UTC-08:00) Baja California</option>
-			<option value="003;Alaskan Standard Time">(UTC-09:00) Alaska</option>
-			<option value="002;Hawaiian Standard Time">(UTC-10:00) Hawaii</option>
-			<option value="001;Samoa Standard Time">(UTC-11:00) Samoa</option>
-			<option value="001;UTC-11">(UTC-11:00) Coordinated Universal Time-11</option>
-			<option value="000;Dateline Standard Time">(UTC-12:00) International Date Line West</option>
+			<option value="085;GMT Standard Time">(UTC) Дублин, Лиссабон, Лондон, Эдинбург</option>
+			<option value="090;Greenwich Standard Time">(UTC) Монровия, Рейкьявик</option>
+			<option value="090;Morocco Standard Time">(UTC) Касабланка</option>
+			<option value="085;UTC">(UTC) Время в формате UTC</option>
+			<option value="095;Central Europe Standard Time">(UTC+01:00) Белград, Братислава, Будапешт, Любляна, Прага</option>
+			<option value="100;Central European Standard Time">(UTC+01:00) Варшава, Загреб, Сараево, Скопье</option>
+			<option value="105;Romance Standard Time">(UTC+01:00) Брюссель, Копенгаген, Мадрид, Париж</option>
+			<option value="113;W. Central Africa Standard Time">(UTC+01:00) Западная Центральная Африка</option>
+			<option value="110;W. Europe Standard Time">(UTC+01:00) Амстердам, Берлин, Берн, Вена, Рим, Стокгольм</option>
+			<option value="135;Israel Standard Time">(UTC+02:00) Иерусалим</option>
+			<option value="120;Jordan Standard Time">(UTC+02:00) Амман</option>
+			<option value="120;Middle East Standard Time">(UTC+02:00) Бейрут</option>
+			<option value="000;Syria Standard Time">(UTC+02:00) Дамаск</option>
+			<option value="000;Turkey Standard Time">(UTC+02:00) Стамбул</option>
+			<option value="113;Namibia Standard Time">(UTC+02:00) Виндхук</option>
+			<option value="115;E. Europe Standard Time">(UTC+02:00) Восточная Европа</option>
+			<option value="120;Egypt Standard Time">(UTC+02:00) Каир</option>
+			<option value="125;FLE Standard Time">(UTC+02:00) Вильнюс, Киев, Рига, София, Таллин, Хельсинки</option>
+			<option value="130;GTB Standard Time">(UTC+02:00) Афины, Бухарест</option>
+			<option value="140;South Africa Standard Time">(UTC+02:00) Хараре, Претория</option>
+			<option value="150;Arab Standard Time">(UTC+03:00) Кувейт, Эр-Рияд</option>
+			<option value="158;Arabic Standard Time">(UTC+03:00) Багдад</option>
+			<option value="000;Kaliningrad Standard Time">(UTC+03:00) Калиниград, Минск</option>
+			<option value="155;E. Africa Standard Time">(UTC+03:00) Найроби</option>
+			<option value="160;Iran Standard Time">(UTC+03:30) Тегеран</option>
+			<option value="165;Arabian Standard Time">(UTC+04:00) Абу-Даби, Мускат</option>
+			<option value="170;Azerbaijan Standard Time">(UTC+04:00) Баку</option>
+			<option value="170;Caucasus Standard Time">(UTC+04:00) Ереван</option>
+			<option value="170;Georgian Standard Time">(UTC+04:00) Тбилиси</option>
+			<option value="165;Mauritius Standard Time">(UTC+04:00) Порт-Луи</option>
+			<option value="145;Russian Standard Time">(UTC+04:00) Волгоград, Москва, Санкт-Петербург</option>
+			<option value="175;Afghanistan Standard Time">(UTC+04:30) Кабул</option>
+			<option value="180;Ekaterinburg Standard Time">(UTC+06:00) Екатеринбург</option>
+			<option value="185;Pakistan Standard Time">(UTC+05:00) Исламабад, Карачи</option>
+			<option value="185;West Asia Standard Time">(UTC+05:00) Ташкент</option>
+			<option value="190;India Standard Time">(UTC+05:30) Колката, Мумбаи, Нью-Дели, Ченнай</option>
+			<option value="200;Sri Lanka Standard Time">(UTC+05:30) Шри-Джаявардене-пура-Котте</option>
+			<option value="193;Nepal Standard Time">(UTC+05:45) Катманду</option>
+			<option value="195;Central Asia Standard Time">(UTC+06:00) Астана</option>
+			<option value="195;Bangladesh Standard Time">(UTC+06:00) Дакка</option>
+			<option value="201;N. Central Asia Standard Time">(UTC+07:00) Новосибирск</option>
+			<option value="203;Myanmar Standard Time">(UTC+06:30) Янгон</option>
+			<option value="205;SE Asia Standard Time">(UTC+07:00) Бангкок, Джакарта, Ханой</option>
+			<option value="207;North Asia Standard Time">(UTC+08:00) Красноярск</option>
+			<option value="210;China Standard Time">(UTC+08:00) Гонконг, Пекин, Урумчи, Чунцин</option>
+			<option value="215;Singapore Standard Time">(UTC+08:00) Куала-Лумпур, Сингапур</option>
+			<option value="227;Ulaanbaatar Standard Time">(UTC+08:00) Улан-Батор</option>
+			<option value="227;North Asia East Standard Time">(UTC+09:00) Иркутск</option>
+			<option value="220;Taipei Standard Time">(UTC+08:00) Тайбэй</option>
+			<option value="225;W. Australia Standard Time">(UTC+08:00) Перт</option>
+			<option value="230;Korea Standard Time">(UTC+09:00) Сеул</option>
+			<option value="235;Tokyo Standard Time">(UTC+09:00) Осака, Саппоро, Токио</option>
+			<option value="240;Yakutsk Standard Time">(UTC+10:00) Якутск</option>
+			<option value="250;Cen. Australia Standard Time">(UTC+09:30) Аделаида</option>
+			<option value="245;AUS Central Standard Time">(UTC+09:30) Дарвин</option>
+			<option value="260;E. Australia Standard Time">(UTC+10:00) Брисбен</option>
+			<option value="255;AUS Eastern Standard Time">(UTC+10:00) Канберра, Мельбурн, Сидней</option>
+			<option value="265;Tasmania Standard Time">(UTC+10:00) Хобарт</option>
+			<option value="270;Vladivostok Standard Time">(UTC+11:00) Владивосток</option>
+			<option value="275;West Pacific Standard Time">(UTC+10:00) Гуам, Порт-Морсби</option>
+			<option value="280;Central Pacific Standard Time">(UTC+11:00) Соломоновы о-ва, Нов. Каледония</option>
+			<option value="285;Fiji Standard Time">(UTC+12:00) Фиджи</option>
+			<option value="285;UTC+12">(UTC+12:00) Время в формате UTC +12</option>
+			<option value="290;New Zealand Standard Time">(UTC+12:00) Веллингтон, Окленд</option>
+			<option value="000;Magadan Standard Time">(UTC+12:00) Магадан</option>
+			<option value="300;Tonga Standard Time">(UTC+13:00) Нукуалофа</option>
+			<option value="001;Samoa Standard Time">(UTC+13:00) Самоа</option>
+			<option value="080;Azores Standard Time">(UTC-01:00) Азорские о-ва</option>
+			<option value="083;Cape Verde Standard Time">(UTC-01:00) О-ва Зеленого Мыса</option>
+			<option value="075;Mid-Atlantic Standard Time">(UTC-02:00) Среднеатлантическое время</option>
+			<option value="075;UTC-02">(UTC-02:00) Время в формате UTC -02</option>
+			<option value="065;E. South America Standard Time">(UTC-03:00) Бразилия</option>
+			<option value="073;Greenland Standard Time">(UTC-03:00) Гренландия</option>
+			<option value="070;Argentina Standard Time">(UTC-03:00) Буэнос-Айрес</option>
+			<option value="000;Bahia Standard Time">(UTC-03:00) Сальвадор</option>
+			<option value="070;Montevideo Standard Time">(UTC-03:00) Монтевидео</option>
+			<option value="065;SA Eastern Standard Time">(UTC-03:00) Кайенна, Форталеза</option>
+			<option value="060;Newfoundland Standard Time">(UTC-03:30) Ньюфаундленд</option>
+			<option value="050;Atlantic Standard Time">(UTC-04:00) Атлантическое время (Канада)</option>
+			<option value="055;Central Brazilian Standard Time">(UTC-04:00) Куяба</option>
+			<option value="056;Pacific SA Standard Time">(UTC-04:00) Сантьяго</option>
+			<option value="055;Paraguay Standard Time">(UTC-04:00) Асунсьон</option>
+			<option value="055;SA Western Standard Time">(UTC-04:00) Джорджтаун, Ла-Пас, Манаус, Сан-Хуан</option>
+			<option value="055;Venezuela Standard Time">(UTC-04:30) Каракас</option>
+			<option value="035;Eastern Standard Time">(UTC-05:00) Восточное время (США и Канада)</option>
+			<option value="045;SA Pacific Standard Time">(UTC-05:00) Богота, Кито, Лима</option>
+			<option value="040;US Eastern Standard Time">(UTC-05:00) Индиана (восток)</option>
+			<option value="025;Canada Central Standard Time">(UTC-06:00) Саскачеван</option>
+			<option value="033;Central America Standard Time">(UTC-06:00) Центральная Америка</option>
+			<option value="020;Central Standard Time">(UTC-06:00) Центральное время (США и Канада)</option>
+			<option value="030;Central Standard Time (Mexico)">(UTC-06:00) Гвадалахара, Мехико, Монтеррей</option>
+			<option value="010;Mountain Standard Time">(UTC-07:00) Горное время (США и Канада)</option>
+			<option value="013;Mountain Standard Time (Mexico)">(UTC-07:00) Ла-Пас, Мазатлан, Чихуахуа</option>
+			<option value="015;US Mountain Standard Time">(UTC-07:00) Аризона</option>
+			<option value="004;Pacific Standard Time">(UTC-08:00) Тихоокеанское время (США и Канада)</option>
+			<option value="004;Pacific Standard Time (Mexico)">(UTC-08:00) Нижняя Калифорния</option>
+			<option value="003;Alaskan Standard Time">(UTC-09:00) Аляска</option>
+			<option value="002;Hawaiian Standard Time">(UTC-10:00) Гавайи</option>
+			<option value="001;UTC-11">(UTC-11:00) Время в формате UTC -11</option>
+			<option value="000;Dateline Standard Time">(UTC-12:00) Западная линия перемены даты</option>
 
 			</select>
 
