@@ -155,30 +155,81 @@ End Sub
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 On Error Resume Next
 
+Set oShell = CreateObject("WScript.Shell")
+SysDrive=oShell.ExpandEnvironmentStrings("%SystemDrive%")
 Set objFSO = CreateObject("Scripting.FileSystemObject")
-Set objFolder = objFSO.CreateFolder("c:\old_c\")
+Set objFolder = objFSO.CreateFolder(SysDrive & "\backedup_shares\")
 Set objFolder = Nothing
-Set objFileOut = objFSO.OpenTextFile("c:\old_c\shares.txt", ForWriting, True)
-Set objFileOut2 = objFSO.OpenTextFile("c:\old_c\shares_backup.cmd", ForWriting, True)
-Set objFileOut3 = objFSO.OpenTextFile("c:\old_c\shares_restore.cmd", ForWriting, True)
+Set objRegEx = CreateObject("VBScript.RegExp")
+objRegEx.Global = True   
+objRegEx.IgnoreCase = True
+objRegEx.Pattern = ".*\\"
+Set objREx = CreateObject("VBScript.RegExp")
+objREx.Global = True   
+objREx.IgnoreCase = True
+objREx.Pattern = "[\:\\ ]"
+Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares.txt", ForWriting, True)
+Set objFileOut2 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_backup.cmd", ForWriting, True)
+Set objFileOut3 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_restore.cmd", ForWriting, True)
+Set objFileOut5 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\remove_inheritance.cmd", ForWriting, True)
+objFileOut2.Write("@echo off" & vbCrLf)
+objFileOut3.Write("@echo off" & vbCrLf)
+objFileOut5.Write("@echo off" & vbCrLf)
 
 Dim strComputer : strComputer = "."
 Dim objWMI : Set objWMI = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2")
 Dim colItems : Set colItems = objWMI.ExecQuery("SELECT * FROM Win32_Share WHERE Type='0'", "WQL", WBEM_RETURN_IMMEDIATELY + WBEM_FORWARD_ONLY)
 Dim objItem
 
+'Создаём папку для хранения флагов существования путей шар (для защиты от каталогов, имеющих более 1 шары)
+If (Not objFSO.FolderExists(SysDrive & "\backedup_shares\flags")) Then
+	oShell.run "cmd /c ""mkdir " & SysDrive & "\backedup_shares\flags"""
+End If
+
 For Each objItem in colItems
-	objFileOut.Write("Share:" & objItem.Name & vbCrLf)
-	objFileOut.Write("Path:" & objItem.Path & vbCrLf)
-	objFileOut.Write("Desc:" & objItem.Caption & vbCrLf)
-	objFileOut2.Write("move /y """ & objItem.Path & """ ""c:\old_c\" & objItem.Name & """" & vbCrLf)
-	objFileOut3.Write("move /y ""c:\old_c\" & objItem.Name & """ """ & objItem.Path & """" & vbCrLf)
-	ReadShareSecurity objWMI, objItem.Name
-'	ReadNTFSSecurity objWMI, objItem.Path
-	objFileOut.Write(vbCrLf)
+	exclude = 0
+	For Each Argument In WScript.Arguments
+		If (InStr(objItem.Name, Argument) = 1) Then
+			exclude = 1
+		End If
+	Next
+	'Ставить флаг установки IIS, если в названии хотя бы одной шары присутствует "SCCM" или "SMS"
+	If (((InStr(objItem.Name, "SCCM") = 1) Or (InStr(objItem.Name, "SMS") = 1)) And (Not objFSO.FileExists(SysDrive & "\backedup_shares\iis"))) Then
+		Set objFileOut4 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\iis", ForWriting, True)
+		objFileOut4.Write("iis" & vbCrLf)
+		objFileOut4.Close
+	End If
+	If (exclude = 0) Then
+		If ((InStr(objItem.Name, "SCCM") = 0) And (InStr(objItem.Name, "SMS") <> 1)) Then
+			objFileOut.Write("Share:" & objItem.Name & vbCrLf)
+			objFileOut.Write("Path:" & objItem.Path & vbCrLf)
+			objFileOut.Write("Desc:" & objItem.Caption & vbCrLf)
+			ReadShareSecurity objWMI, objItem.Name
+			'ReadNTFSSecurity objWMI, objItem.Path
+			objFileOut.Write(vbCrLf)
+		End If
+		If (UCase(left(objItem.Path, 2)) = SysDrive) And (Not objFSO.FileExists(SysDrive & "\backedup_shares\flags\" & objREx.Replace(objItem.Path,"_"))) Then
+			objFileOut2.Write("move /y """ & "%1" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ """ & "%1\backedup_shares\" & objItem.Name & """" & vbCrLf)
+			containpath = Left(objItem.Path, Len(objItem.Path) - Len(objRegEx.Replace(objItem.Path,"")) - 1)
+			objFileOut3.Write("mkdir ""%SystemDrive%" & Right(containpath, Len(containpath) - Len("C:")) & """" & vbCrLf)
+			objFileOut3.Write("move /y """ & "%SystemDrive%\backedup_shares\" & objItem.Name & """ """ & "%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """" & vbCrLf)
+			' Отключаем наследование и удаляем унаследованные права на каталог
+			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -ot file -on """ & objItem.Path & """ -actn setprot -op ""dacl:p_nc;sacl:p_nc""" & vbCrLf)
+			'Создаём флаг, указывающий, что шара с таким каталогом уже есть в списке
+			Set objFlagObj = objFSO.OpenTextFile(SysDrive & "\backedup_shares\flags\" & objREx.Replace(objItem.Path,"_"), ForWriting, True)
+			objFlagObj.Close
+		End If
+	End If
 Next
 
-objFileOut2.Write("REM !!! cscript.exe c:\old_c\clear_c.vbs" & vbCrLf)
-objFileOut3.Write("cscript.exe c:\old_c\shares_restore.vbs" & vbCrLf)
+'Удаляем папку для хранения флагов существования путей шар
+If (objFSO.FolderExists(SysDrive & "\backedup_shares\flags")) Then
+	oShell.run "cmd /c ""rd /s /q " & SysDrive & "\backedup_shares\flags"""
+End If
+
+objFileOut3.Write("cscript.exe " & "%SystemDrive%\backedup_shares\shares_restore.vbs %1" & vbCrLf)
+objFileOut3.Write("%SystemDrive%\backedup_shares\remove_inheritance.cmd" & vbCrLf)
 objFileOut.Close
 objFileOut2.Close
+objFileOut3.Close
+objFileOut5.Close
