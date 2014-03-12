@@ -30,15 +30,15 @@ Do Until objFileIn.AtEndOfStream Or ((Len(share_name) > 0) And (Len(share_path) 
 		If (InStr(tmpline, "Path:") = 1) Then share_path = Right(tmpline, Len(tmpline) - Len("Path:"))
 		If (InStr(tmpline, "Desc:") = 1) Then share_desc = Right(tmpline, Len(tmpline) - Len("Desc:"))
 	End If
-Loop ' Считали все три параметра для создания общей папки - создаем
+Loop ' РЎС‡РёС‚Р°Р»Рё РІСЃРµ С‚СЂРё РїР°СЂР°РјРµС‚СЂР° РґР»СЏ СЃРѕР·РґР°РЅРёСЏ РѕР±С‰РµР№ РїР°РїРєРё - СЃРѕР·РґР°РµРј
 
-'Проверяем, не изменилась ли буква системного диска и если изменилась - подставляем новую
+'РџСЂРѕРІРµСЂСЏРµРј, РЅРµ РёР·РјРµРЅРёР»Р°СЃСЊ Р»Рё Р±СѓРєРІР° СЃРёСЃС‚РµРјРЅРѕРіРѕ РґРёСЃРєР° Рё РµСЃР»Рё РёР·РјРµРЅРёР»Р°СЃСЊ - РїРѕРґСЃС‚Р°РІР»СЏРµРј РЅРѕРІСѓСЋ
 If (UCase(left(share_path, 2)) = WScript.Arguments(0)) And (WScript.Arguments(0) <> SysDrive) Then
 	share_path = SysDrive & Right(share_path, Len(share_path) - Len("C:"))
 End If
 
-' Проверяем, не изменилась ли буква диска после развёртывания
-' Типы дисков:
+' РџСЂРѕРІРµСЂСЏРµРј, РЅРµ РёР·РјРµРЅРёР»Р°СЃСЊ Р»Рё Р±СѓРєРІР° РґРёСЃРєР° РїРѕСЃР»Рµ СЂР°Р·РІС‘СЂС‚С‹РІР°РЅРёСЏ
+' РўРёРїС‹ РґРёСЃРєРѕРІ:
 ' 0 - Unknown
 ' 1 - Removable drive
 ' 2 - Fixed drive
@@ -53,7 +53,7 @@ If objFSO.GetDrive(objFSO.GetDriveName(share_path)).DriveType <> 2 Then
 			DrvLetter = Chr(DrvNumber)
 			suggested_share_path = DrvLetter & Right(share_path, Len(share_path) - Len("C"))
 		End If
-	Loop Until ((objFSO.GetDrive(objFSO.GetDriveName(DrvLetter & ":\")).DriveType = 2) And objFSO.FolderExists(suggested_share_path)) Or (DrvNumber = 65) ' Перебираем буквы дисков, пока не попадётся жётский диск, на котором существует нужный каталог или, если каталог так и не был найден, пока не доберёмся до диска A (Код - 65)
+	Loop Until ((objFSO.GetDrive(objFSO.GetDriveName(DrvLetter & ":\")).DriveType = 2) And objFSO.FolderExists(suggested_share_path)) Or (DrvNumber = 65) ' РџРµСЂРµР±РёСЂР°РµРј Р±СѓРєРІС‹ РґРёСЃРєРѕРІ, РїРѕРєР° РЅРµ РїРѕРїР°РґС‘С‚СЃСЏ Р¶С‘С‚СЃРєРёР№ РґРёСЃРє, РЅР° РєРѕС‚РѕСЂРѕРј СЃСѓС‰РµСЃС‚РІСѓРµС‚ РЅСѓР¶РЅС‹Р№ РєР°С‚Р°Р»РѕРі РёР»Рё, РµСЃР»Рё РєР°С‚Р°Р»РѕРі С‚Р°Рє Рё РЅРµ Р±С‹Р» РЅР°Р№РґРµРЅ, РїРѕРєР° РЅРµ РґРѕР±РµСЂС‘РјСЃСЏ РґРѕ РґРёСЃРєР° A (РљРѕРґ - 65)
 	If (DrvNumber <> 65) Then
 		share_path = suggested_share_path
 	End If
@@ -69,8 +69,8 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 	errReturn = objNewShare.Create (share_path, share_name, FILE_SHARE, MAXIMUM_CONNECTIONS, share_desc)
 
 	If errReturn = 0 Then
-		' Создали общую папку, чистим дефолтные доступы
-		WSHShell.Run SysDrive & "\backedup_shares\setacl.exe -ot shr -on """ & share_name & """ -actn trustee -trst ""n1:""ВСЕ"";ta:remtrst""", 1, True
+		' РЎРѕР·РґР°Р»Рё РѕР±С‰СѓСЋ РїР°РїРєСѓ, С‡РёСЃС‚РёРј РґРµС„РѕР»С‚РЅС‹Рµ РґРѕСЃС‚СѓРїС‹
+		WSHShell.Run SysDrive & "\backedup_shares\setacl.exe -ot shr -on """ & share_name & """ -actn trustee -trst ""n1:""Р’РЎР•"";ta:remtrst""", 1, True
 		WSHShell.Run SysDrive & "\backedup_shares\setacl.exe -ot shr -on """ & share_name & """ -actn trustee -trst ""n1:""EVERYONE"";ta:remtrst""", 1, True
 
 		Do
@@ -82,7 +82,7 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 					If (InStr(tmpline, "Trustee:") = 1) Then trustee = Right(tmpline, Len(tmpline) - Len("Trustee:"))
 					If (InStr(tmpline, "Right:") = 1) Then perm = Right(tmpline, Len(tmpline) - Len("Right:"))
 				End If
-			Loop ' Считали группу доступа и уровень доступа - применяем
+			Loop ' РЎС‡РёС‚Р°Р»Рё РіСЂСѓРїРїСѓ РґРѕСЃС‚СѓРїР° Рё СѓСЂРѕРІРµРЅСЊ РґРѕСЃС‚СѓРїР° - РїСЂРёРјРµРЅСЏРµРј
 
 			If ((Len(trustee) > 0) And (Len(perm) > 0)) Then
 				If (InStr(UCase(trustee), "BUILTIN\") = 1) Then trustee = Right(trustee, Len(trustee) - Len("BUILTIN\"))
@@ -116,7 +116,7 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 			Case Else
 				errText = "Operation could not be completed"
 		End Select
-		MsgBox "Ошибка создания общей папки " & share_name & "! Код ошибки:" & errReturn & " - " & errText
+		MsgBox "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РѕР±С‰РµР№ РїР°РїРєРё " & share_name & "! РљРѕРґ РѕС€РёР±РєРё:" & errReturn & " - " & errText
 	End If
 
 End If
