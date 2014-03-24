@@ -116,7 +116,7 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 			Case Else
 				errText = "Operation could not be completed"
 		End Select
-		MsgBox "Ошибка создания общей папки " & share_name & "! Код ошибки:" & errReturn & " - " & errText
+		MsgBox "Error while creating shared folder " & share_name & "! Error code:" & errReturn & " - " & errText
 	End If
 
 End If
