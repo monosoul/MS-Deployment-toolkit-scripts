@@ -260,7 +260,7 @@ ADODBStream.SaveToFile SysDrive & "\backedup_shares\acllist.lca", 2
 ADODBStream.Close()
 
 objFileOut3.Write("cscript.exe " & "%SystemDrive%\backedup_shares\shares_restore.vbs %1" & vbCrLf)
-'objFileOut3.Write("%SystemDrive%\backedup_shares\remove_inheritance.cmd" & vbCrLf)
+objFileOut3.Write(SysDrive & "\backedup_shares\setacl.exe -ignoreerr -on """ & SysDrive & """ -ot file -actn restore -bckp """ & SysDrive & "\backedup_shares\acllist.lca""" & vbCrLf)
 objFileOut.Close
 objFileOut2.Close
 objFileOut3.Close
