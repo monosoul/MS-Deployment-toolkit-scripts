@@ -16,11 +16,12 @@ objRegEx.Pattern = "\((.*?)\)"
 
 'Импортируем шаблоны
 objFileOut.Write("dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml" & vbCrLf)
-'oShell.run "dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml",0,bWaitOnReturn
 
 Do Until objFileIn.AtEndOfStream
 	ProcessQuota()
 Loop
+
+objFileOut.Close
 
 Sub ProcessQuota()
 	
@@ -53,11 +54,11 @@ Sub ProcessQuota()
 	'Пересчитываем единицы измерения в единицы на порядок ниже, чтобы избавиться от разделителя в лимите
 	delimpos = 0
 	If (UCase(Right(quota_limit, 2)) = "GB") Then
-		quota_limit = CStr(CInt(CDbl(Left(quota_limit, Len(quota_limit) - 2)) * 1024)) & "MB"
+		quota_limit = CStr(CLng(CDbl(Left(quota_limit, Len(quota_limit) - 2)) * 1024)) & "MB"
 	ElseIf (UCase(Right(quota_limit, 2)) = "MB") Then
-		quota_limit = CStr(CInt(CDbl(Left(quota_limit, Len(quota_limit) - 2)) * 1024)) & "KB"
+		quota_limit = CStr(CLng(CDbl(Left(quota_limit, Len(quota_limit) - 2)) * 1024)) & "KB"
 	ElseIf (UCase(Right(quota_limit, 2)) = "KB") Then
-		quota_limit = CStr(CInt(Left(quota_limit, Len(quota_limit) - 2))) & "KB"
+		quota_limit = CStr(CLng(Left(quota_limit, Len(quota_limit) - 2))) & "KB"
 	End If
 	
 	'Проверяем, не изменилась ли буква системного диска и если изменилась - подставляем новую
@@ -89,10 +90,8 @@ Sub ProcessQuota()
 	
 	If source_template = "None" Then
 		objFileOut.Write("dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & "" & vbCrLf)
-		'oShell.run "dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & "",0,bWaitOnReturn
 	Else 'Если квота была создана на основе шаблона, то используем его снова
 		objFileOut.Write("dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & " /SourceTemplate:" & source_template & "" & vbCrLf)
-		'oShell.run "dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & " /SourceTemplate:" & source_template & "",0,bWaitOnReturn
 	End If
 	
 	End If
