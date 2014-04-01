@@ -10,12 +10,13 @@ SysDrive=oShell.ExpandEnvironmentStrings("%SystemDrive%")
 Set WSHShell = CreateObject("WScript.Shell")
 Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares.txt", ForReading)
-Set Drives = objFSO.Drives
+Set colDrives = objFSO.Drives
 
 Do Until objFileIn.AtEndOfStream
 	ProcessShare()
 Loop
 
+objFileIn.Close
 
 Sub ProcessShare()
 
@@ -38,25 +39,24 @@ If (UCase(left(share_path, 2)) = WScript.Arguments(0)) And (WScript.Arguments(0)
 End If
 
 ' Проверяем, не изменилась ли буква диска после развёртывания
-' Типы дисков:
-' 0 - Unknown
-' 1 - Removable drive
-' 2 - Fixed drive
-' 3 - Network drive
-' 4 - CD-ROM drive
-' 5 - RAM Disk
-DrvLetter = objFSO.GetDrive(objFSO.GetDriveName(share_path)).DriveLetter
-If objFSO.GetDrive(objFSO.GetDriveName(share_path)).DriveType <> 2 Then
-	Do
-		DrvNumber = Asc(UCase(DrvLetter)) - 1
-		If objFSO.GetDrive(objFSO.GetDriveName(Chr(DrvNumber) & ":\")).DriveType = 2 Then
-			DrvLetter = Chr(DrvNumber)
-			suggested_share_path = DrvLetter & Right(share_path, Len(share_path) - Len("C"))
-		End If
-	Loop Until ((objFSO.GetDrive(objFSO.GetDriveName(DrvLetter & ":\")).DriveType = 2) And objFSO.FolderExists(suggested_share_path)) Or (DrvNumber = 65) ' Перебираем буквы дисков, пока не попадётся жётский диск, на котором существует нужный каталог или, если каталог так и не был найден, пока не доберёмся до диска A (Код - 65)
-	If (DrvNumber <> 65) Then
-		share_path = suggested_share_path
+
+drivesn = ""
+OldDrvLetter = Left(share_path, 2)
+
+For Each rrtmpline in FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
+	If (InStr(rrtmpline, OldDrvLetter) = 1) Then
+		drivesn = Right(rrtmpline, Len(rrtmpline) - Len(OldDrvLetter & " "))
 	End If
+Next
+
+If (Len(drivesn) > 0) Then
+	For Each objDrive in colDrives
+		If objDrive.DriveType = 2 Then
+			If (CStr(objDrive.SerialNumber) = drivesn) And (objFSO.FolderExists(objDrive.DriveLetter & Right(share_path, Len(share_path) - 1))) Then
+				share_path = objDrive.DriveLetter & Right(share_path, Len(share_path) - 1)
+			End If
+		End If
+	Next
 End If
 
 If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) Then
@@ -122,6 +122,22 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 End If
 
 End Sub
+
+Function FileToArray(ByVal strFile, ByVal blnUNICODE)
+  Const FOR_READING = 1
+  Dim objFSO, objTS, strContents
+  FileToArray = Split("")
+  Set objFSO = CreateObject("Scripting.FileSystemObject")
+  If objFSO.FileExists(strFile) Then
+    On Error Resume Next
+    Set objTS = objFSO.OpenTextFile(strFile, FOR_READING, False, blnUNICODE)
+    If Err = 0 Then
+      strContents = objTS.ReadAll
+      objTS.Close
+      FileToArray = Split(strContents, vbNewLine)
+    End If
+  End If
+End Function
 
 'Производим замену в списке ACL, если сменилась буква системного диска
 'Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\acllist.lca", ForReading)

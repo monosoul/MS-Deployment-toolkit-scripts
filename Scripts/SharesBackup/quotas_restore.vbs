@@ -5,6 +5,7 @@ Const bWaitOnReturn = True
 Set oShell = CreateObject("WScript.Shell")
 SysDrive=oShell.ExpandEnvironmentStrings("%SystemDrive%")
 Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set colDrives = objFSO.Drives
 Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\all_quotas.txt", ForReading)
 Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quotas_create.bat", ForWriting, True)
 objFileOut.Write("@echo off" & vbCrLf)
@@ -22,6 +23,7 @@ Do Until objFileIn.AtEndOfStream
 Loop
 
 objFileOut.Close
+objFileIn.Close
 
 Sub ProcessQuota()
 	
@@ -42,6 +44,12 @@ Sub ProcessQuota()
 	Loop
 	
 	If quota_path <> "" Then
+	
+	'Удаляем "(Does not match template)" из имени шаблона, если он содержит эту надпись
+	
+	If (InStr(source_template, "(Does not match template)") <> 0) Then
+		source_template = RTrim(Left(source_template, Len(source_template) - Len("(Does not match template)")))
+	End If
 	
 	'Выдёргиваем тип квоты из строки с лимитом
 	Set matches = objRegEx.Execute(quota_limit)
@@ -67,32 +75,47 @@ Sub ProcessQuota()
 	End If
 	
 	' Проверяем, не изменилась ли буква диска после развёртывания
-	' Типы дисков:
-	' 0 - Unknown
-	' 1 - Removable drive
-	' 2 - Fixed drive
-	' 3 - Network drive
-	' 4 - CD-ROM drive
-	' 5 - RAM Disk
-	DrvLetter = objFSO.GetDrive(objFSO.GetDriveName(quota_path)).DriveLetter
-	If objFSO.GetDrive(objFSO.GetDriveName(quota_path)).DriveType <> 2 Then
-		Do
-			DrvNumber = Asc(UCase(DrvLetter)) - 1
-			If objFSO.GetDrive(objFSO.GetDriveName(Chr(DrvNumber) & ":\")).DriveType = 2 Then
-				DrvLetter = Chr(DrvNumber)
-				suggested_quota_path = DrvLetter & Right(quota_path, Len(quota_path) - Len("C"))
-			End If
-		Loop Until ((objFSO.GetDrive(objFSO.GetDriveName(DrvLetter & ":\")).DriveType = 2) And objFSO.FolderExists(suggested_quota_path)) Or (DrvNumber = 65) ' Перебираем буквы дисков, пока не попадётся жётский диск, на котором существует нужный каталог или, если каталог так и не был найден, пока не доберёмся до диска A (Код - 65)
-		If (DrvNumber <> 65) Then
-			quota_path = suggested_quota_path
+	
+	drivesn = ""
+	OldDrvLetter = Left(quota_path, 2)
+	
+	For Each rrtmpline in FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
+		If (InStr(rrtmpline, OldDrvLetter) = 1) Then
+			drivesn = Right(rrtmpline, Len(rrtmpline) - Len(OldDrvLetter & " "))
 		End If
+	Next
+	
+	If (Len(drivesn) > 0) Then
+		For Each objDrive in colDrives
+			If objDrive.DriveType = 2 Then
+				If (CStr(objDrive.SerialNumber) = drivesn) And (objFSO.FolderExists(objDrive.DriveLetter & Right(quota_path, Len(quota_path) - 1))) Then
+					quota_path = objDrive.DriveLetter & Right(quota_path, Len(quota_path) - 1)
+				End If
+			End If
+		Next
 	End If
 	
 	If source_template = "None" Then
 		objFileOut.Write("dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & "" & vbCrLf)
 	Else 'Если квота была создана на основе шаблона, то используем его снова
-		objFileOut.Write("dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & " /SourceTemplate:" & source_template & "" & vbCrLf)
+		objFileOut.Write("dirquota quota add /Overwrite /Path:""" & quota_path & """ /Limit:" & quota_limit & " /Type:" & quota_type & " /Status:" & quota_status & " /SourceTemplate:""" & source_template & """" & vbCrLf)
 	End If
 	
 	End If
 End Sub
+
+Function FileToArray(ByVal strFile, ByVal blnUNICODE)
+  Const FOR_READING = 1
+  Dim objFSO, objTS, strContents
+  FileToArray = Split("")
+  Set objFSO = CreateObject("Scripting.FileSystemObject")
+  If objFSO.FileExists(strFile) Then
+    On Error Resume Next
+    Set objTS = objFSO.OpenTextFile(strFile, FOR_READING, False, blnUNICODE)
+    If Err = 0 Then
+      strContents = objTS.ReadAll
+      objTS.Close
+      FileToArray = Split(strContents, vbNewLine)
+    End If
+  End If
+End Function

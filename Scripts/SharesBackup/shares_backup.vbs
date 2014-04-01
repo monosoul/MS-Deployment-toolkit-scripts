@@ -161,6 +161,7 @@ SysDrive=oShell.ExpandEnvironmentStrings("%SystemDrive%")
 Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set objFolder = objFSO.CreateFolder(SysDrive & "\backedup_shares\")
 Set objFolder = Nothing
+Set colDrives = objFSO.Drives
 Set objRegEx = CreateObject("VBScript.RegExp")
 objRegEx.Global = True   
 objRegEx.IgnoreCase = True
@@ -170,12 +171,20 @@ objREx.Global = True
 objREx.IgnoreCase = True
 objREx.Pattern = "[\:\\ ]"
 Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares.txt", ForWriting, True)
+Set objFileOut1 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\drives_sn.list", ForWriting, True)
 Set objFileOut2 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_backup.cmd", ForWriting, True)
 Set objFileOut3 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_restore.cmd", ForWriting, True)
 Set objFileOut5 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\remove_inheritance.cmd", ForWriting, True)
 objFileOut2.Write("@echo off" & vbCrLf)
 objFileOut3.Write("@echo off" & vbCrLf)
 objFileOut5.Write("@echo off" & vbCrLf)
+
+'Создаём список сопоставления букв разделов и серийных номеров
+For Each objDrive in colDrives
+	If objDrive.DriveType = 2 Then
+		objFileOut1.Write(objDrive.DriveLetter & ": " & objDrive.SerialNumber & vbCrLf)
+	End If
+Next
 
 Dim strComputer : strComputer = "."
 Dim objWMI : Set objWMI = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2")
@@ -270,6 +279,7 @@ objFileOut3.Write("cscript.exe " & "%SystemDrive%\backedup_shares\shares_restore
 objFileOut3.Write("%SystemDrive%\backedup_shares\remove_inheritance.cmd" & vbCrLf)
 'objFileOut3.Write(SysDrive & "\backedup_shares\setacl.exe -ignoreerr -on """ & SysDrive & """ -ot file -actn restore -bckp """ & SysDrive & "\backedup_shares\acllist.lca""" & vbCrLf)
 objFileOut.Close
+objFileOut1.Close
 objFileOut2.Close
 objFileOut3.Close
 objFileOut5.Close
