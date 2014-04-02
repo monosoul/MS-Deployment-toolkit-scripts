@@ -20,7 +20,6 @@ Do Until objFileIn.AtEndOfStream
 Loop
 
 objFileIn.Close
-objFileOut.Close
 
 Sub ProcessShare()
 
