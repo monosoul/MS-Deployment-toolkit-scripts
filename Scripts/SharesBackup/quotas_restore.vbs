@@ -8,6 +8,7 @@ Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set colDrives = objFSO.Drives
 Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\all_quotas.txt", ForReading)
 Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quotas_create.bat", ForWriting, True)
+Set filesize = objFSO.GetFile(SysDrive & "\backedup_shares\quota_templates.xml")
 objFileOut.Write("@echo off" & vbCrLf)
 
 Set objRegEx = CreateObject("VBScript.RegExp")
@@ -19,8 +20,10 @@ Dim DrivesSNarray
 
 DrivesSNarray = FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
 
-'Импортируем шаблоны
-objFileOut.Write("dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml" & vbCrLf)
+'Импортируем шаблоны, если они были экспортированы ранее
+If filesize.size <> 0 Then
+	objFileOut.Write("dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml /Overwrite" & vbCrLf)
+End If
 
 Do Until objFileIn.AtEndOfStream
 	ProcessQuota()

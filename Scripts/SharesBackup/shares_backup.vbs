@@ -227,6 +227,7 @@ For Each objItem in colItems
 			containpath = Left(objItem.Path, Len(objItem.Path) - Len(objRegEx.Replace(objItem.Path,"")) - 1)
 			objFileOut3.Write("mkdir ""%SystemDrive%" & Right(containpath, Len(containpath) - Len("C:")) & """" & vbCrLf)
 			objFileOut3.Write("move /y """ & "%SystemDrive%\backedup_shares\" & objItem.Name & """ """ & "%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """" & vbCrLf)
+			
 			' Отключаем наследование и удаляем CREATOR-OWNER
 			objFileOut5.Write("echo Disabling ACL inheritance on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
 			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn setprot -op ""dacl:p_c;sacl:p_c""" & vbCrLf)
