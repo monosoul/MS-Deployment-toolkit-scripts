@@ -228,11 +228,11 @@ For Each objItem in colItems
 			objFileOut3.Write("mkdir ""%SystemDrive%" & Right(containpath, Len(containpath) - Len("C:")) & """" & vbCrLf)
 			objFileOut3.Write("move /y """ & "%SystemDrive%\backedup_shares\" & objItem.Name & """ """ & "%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """" & vbCrLf)
 			' Отключаем наследование и удаляем CREATOR-OWNER
-			objFileOut5.Write("echo Disabling ACL inheritance on " & objItem.Path & " ..." & vbCrLf)
-			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on """ & objItem.Path & """ -actn setprot -op ""dacl:p_c;sacl:p_c""" & vbCrLf)
+			objFileOut5.Write("echo Disabling ACL inheritance on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
+			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn setprot -op ""dacl:p_c;sacl:p_c""" & vbCrLf)
 			objFileOut5.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
-			objFileOut5.Write("echo Removing CREATOR-OWNER from ACL on " & objItem.Path & " ..." & vbCrLf)
-			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on """ & objItem.Path & """ -actn trustee -trst ""n1:S-1-3-0;ta:remtrst;w:dacl,sacl""" & vbCrLf)
+			objFileOut5.Write("echo Removing CREATOR-OWNER from ACL on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
+			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn trustee -trst ""n1:S-1-3-0;ta:remtrst;w:dacl,sacl""" & vbCrLf)
 			objFileOut5.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
 			
 			'Бэкапим ACL NTFS для каталогов, которые будем перемещать
