@@ -11,6 +11,9 @@ Set WSHShell = CreateObject("WScript.Shell")
 Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares.txt", ForReading)
 Set colDrives = objFSO.Drives
+Dim DrivesSNarray
+
+DrivesSNarray = FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
 
 Do Until objFileIn.AtEndOfStream
 	ProcessShare()
@@ -43,7 +46,7 @@ End If
 drivesn = ""
 OldDrvLetter = Left(share_path, 2)
 
-For Each rrtmpline in FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
+For Each rrtmpline in DrivesSNarray
 	If (InStr(rrtmpline, OldDrvLetter) = 1) Then
 		drivesn = Right(rrtmpline, Len(rrtmpline) - Len(OldDrvLetter & " "))
 	End If

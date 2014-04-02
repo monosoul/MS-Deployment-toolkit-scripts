@@ -15,6 +15,10 @@ objRegEx.Global = True
 objRegEx.IgnoreCase = True
 objRegEx.Pattern = "\((.*?)\)"
 
+Dim DrivesSNarray
+
+DrivesSNarray = FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
+
 'Импортируем шаблоны
 objFileOut.Write("dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml" & vbCrLf)
 
@@ -79,7 +83,7 @@ Sub ProcessQuota()
 	drivesn = ""
 	OldDrvLetter = Left(quota_path, 2)
 	
-	For Each rrtmpline in FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
+	For Each rrtmpline in DrivesSNarray
 		If (InStr(rrtmpline, OldDrvLetter) = 1) Then
 			drivesn = Right(rrtmpline, Len(rrtmpline) - Len(OldDrvLetter & " "))
 		End If
