@@ -175,9 +175,11 @@ Set objFileOut1 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\drives_sn.lis
 Set objFileOut2 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_backup.cmd", ForWriting, True)
 Set objFileOut3 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_restore.cmd", ForWriting, True)
 Set objFileOut5 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\remove_inheritance.cmd", ForWriting, True)
+Set objFileOut6 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\own_shares.cmd", ForWriting, True)
 objFileOut2.Write("@echo off" & vbCrLf)
 objFileOut3.Write("@echo off" & vbCrLf)
 objFileOut5.Write("@echo off" & vbCrLf)
+objFileOut6.Write("@echo off" & vbCrLf)
 
 'Создаём список сопоставления букв разделов и серийных номеров
 For Each objDrive in colDrives
@@ -191,9 +193,9 @@ Dim objWMI : Set objWMI = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2")
 Dim colItems : Set colItems = objWMI.ExecQuery("SELECT * FROM Win32_Share WHERE Type='0'", "WQL", WBEM_RETURN_IMMEDIATELY + WBEM_FORWARD_ONLY)
 Dim objItem
 
-'dircounter = 0
+dircounter = 0
 
-'copycommand = "copy /A /Y "
+copycommand = "copy /A /Y "
 
 'Создаём папку для хранения флагов существования путей шар (для защиты от каталогов, имеющих более 1 шары)
 If (Not objFSO.FolderExists(SysDrive & "\backedup_shares\flags")) Then
@@ -223,12 +225,24 @@ For Each objItem in colItems
 			objFileOut.Write(vbCrLf)
 		End If
 		If (UCase(left(objItem.Path, 2)) = SysDrive) And (Not objFSO.FileExists(SysDrive & "\backedup_shares\flags\" & objREx.Replace(objItem.Path,"_"))) Then
+			'Генерируем shares_backup.cmd
 			objFileOut2.Write("move /y """ & "%1" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ """ & "%1\backedup_shares\" & objItem.Name & """" & vbCrLf)
+			objFileOut2.Write("if not %errorlevel%==0 exit %errorlevel%" & vbCrLf)
+			
+			'Генерируем shares_restore.cmd
 			containpath = Left(objItem.Path, Len(objItem.Path) - Len(objRegEx.Replace(objItem.Path,"")) - 1)
 			objFileOut3.Write("mkdir ""%SystemDrive%" & Right(containpath, Len(containpath) - Len("C:")) & """" & vbCrLf)
 			objFileOut3.Write("move /y """ & "%SystemDrive%\backedup_shares\" & objItem.Name & """ """ & "%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """" & vbCrLf)
 			
-			' Отключаем наследование и удаляем CREATOR-OWNER
+			'Генерируем own_shares.cmd
+			objFileOut6.Write("echo Taking ownership on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
+			objFileOut6.Write("takeown /R /A /D ""Y"" /F ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ >> ""%SystemDrive%\backedup_shares\takeown.log""" & vbCrLf)
+			objFileOut6.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
+			objFileOut6.Write("echo Adding Administrators and SYSTEM to ACL on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
+			objFileOut6.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn ace -ace ""n:S-1-5-18;p:full"" -ace ""n:S-1-5-32-544;p:full""" & vbCrLf)
+			objFileOut6.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
+			
+			' Отключаем наследование и удаляем CREATOR-OWNER (remove_inheritance.cmd)
 			objFileOut5.Write("echo Disabling ACL inheritance on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
 			objFileOut5.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn setprot -op ""dacl:p_c;sacl:p_c""" & vbCrLf)
 			objFileOut5.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
@@ -237,13 +251,13 @@ For Each objItem in colItems
 			objFileOut5.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
 			
 			'Бэкапим ACL NTFS для каталогов, которые будем перемещать
-			'oShell.Run SysDrive & "\backedup_shares\setacl.exe -on """ & objItem.Path & """ -ot file -actn list -lst ""f:sddl;w:d,s,o,g"" -bckp """ & SysDrive & "\backedup_shares\" & dircounter & ".acl""",0,bWaitOnReturn
-			'If (dircounter = 0) Then
-			'	copycommand = copycommand & SysDrive & "\backedup_shares\" & dircounter & ".acl"
-			'Else
-			'	copycommand = copycommand & "+" & SysDrive & "\backedup_shares\" & dircounter & ".acl"
-			'End If
-			'dircounter = dircounter + 1
+			oShell.Run SysDrive & "\backedup_shares\setacl.exe -on """ & objItem.Path & """ -ot file -actn list -lst ""f:sddl;w:d,s,o,g"" -bckp """ & SysDrive & "\backedup_shares\" & dircounter & ".acl""",0,bWaitOnReturn
+			If (dircounter = 0) Then
+				copycommand = copycommand & SysDrive & "\backedup_shares\" & dircounter & ".acl"
+			Else
+				copycommand = copycommand & "+" & SysDrive & "\backedup_shares\" & dircounter & ".acl"
+			End If
+			dircounter = dircounter + 1
 			
 			'Создаём флаг, указывающий, что шара с таким каталогом уже есть в списке
 			Set objFlagObj = objFSO.OpenTextFile(SysDrive & "\backedup_shares\flags\" & objREx.Replace(objItem.Path,"_"), ForWriting, True)
@@ -258,29 +272,30 @@ If (objFSO.FolderExists(SysDrive & "\backedup_shares\flags")) Then
 End If
 
 'Склеиваем файлы со списком ACL для каждого из каталогов
-'copycommand = copycommand & " " & SysDrive & "\backedup_shares\acllist.lca"
-'oShell.run "cmd /c """ & copycommand & """",0,bWaitOnReturn
-'oShell.run "cmd /c ""del /F /Q " & SysDrive & "\backedup_shares\*.acl""",0,bWaitOnReturn
+copycommand = copycommand & " " & SysDrive & "\backedup_shares\acllist.lca"
+oShell.run "cmd /c """ & copycommand & """",0,bWaitOnReturn
+oShell.run "cmd /c ""del /F /Q " & SysDrive & "\backedup_shares\*.acl""",0,bWaitOnReturn
 
 'Меняем кодировку файла со списокм ACL с UCS-2 LE (UTF-16) на UTF-8
-'Set ADODBStream = CreateObject("ADODB.Stream")
-'ADODBStream.Type = 2
-'ADODBStream.Charset = "UTF-16LE"
-'ADODBStream.Open()
-'ADODBStream.LoadFromFile(SysDrive & "\backedup_shares\acllist.lca")
-'Text = ADODBStream.ReadText()
-'ADODBStream.Close()
-'ADODBStream.Charset = "UTF-8"
-'ADODBStream.Open()
-'ADODBStream.WriteText(Text)
-'ADODBStream.SaveToFile SysDrive & "\backedup_shares\acllist.lca", 2
-'ADODBStream.Close()
+Set ADODBStream = CreateObject("ADODB.Stream")
+ADODBStream.Type = 2
+ADODBStream.Charset = "UTF-16LE"
+ADODBStream.Open()
+ADODBStream.LoadFromFile(SysDrive & "\backedup_shares\acllist.lca")
+Text = ADODBStream.ReadText()
+ADODBStream.Close()
+ADODBStream.Charset = "UTF-8"
+ADODBStream.Open()
+ADODBStream.WriteText(Text)
+ADODBStream.SaveToFile SysDrive & "\backedup_shares\acllist.lca", 2
+ADODBStream.Close()
 
 objFileOut3.Write("cscript.exe " & "%SystemDrive%\backedup_shares\shares_restore.vbs %1" & vbCrLf)
+objFileOut3.Write("%SystemDrive%\backedup_shares\setacl.exe -ignoreerr -on ""%SystemDrive%"" -ot file -actn restore -bckp ""%SystemDrive%\backedup_shares\acllist.lca""" & vbCrLf)
 objFileOut3.Write("%SystemDrive%\backedup_shares\remove_inheritance.cmd" & vbCrLf)
-'objFileOut3.Write(SysDrive & "\backedup_shares\setacl.exe -ignoreerr -on """ & SysDrive & """ -ot file -actn restore -bckp """ & SysDrive & "\backedup_shares\acllist.lca""" & vbCrLf)
 objFileOut.Close
 objFileOut1.Close
 objFileOut2.Close
 objFileOut3.Close
 objFileOut5.Close
+objFileOut6.Close

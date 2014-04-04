@@ -143,10 +143,10 @@ Function FileToArray(ByVal strFile, ByVal blnUNICODE)
 End Function
 
 'Производим замену в списке ACL, если сменилась буква системного диска
-'Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\acllist.lca", ForReading)
-'strText = objFileACL.ReadAll
-'objFileACL.Close
-'strNewText = Replace(strText, WScript.Arguments(0), SysDrive)
-'Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\acllist.lca", ForWriting)
-'objFileACL.Write strNewText
-'objFileACL.Close
+Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\acllist.lca", ForReading)
+strText = objFileACL.ReadAll
+objFileACL.Close
+strNewText = Replace(strText, WScript.Arguments(0), SysDrive)
+Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\acllist.lca", ForWriting)
+objFileACL.Write strNewText
+objFileACL.Close
