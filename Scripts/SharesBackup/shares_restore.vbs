@@ -119,7 +119,7 @@ If ((Len(share_name) > 0) And (Len(share_path) > 0) And (Len(share_desc) > 0)) T
 			Case Else
 				errText = "Operation could not be completed"
 		End Select
-		MsgBox "Error while creating shared folder " & share_name & "! Error code:" & errReturn & " - " & errText
+		WScript.Echo "Error while creating shared folder " & share_name & "! Error code:" & errReturn & " - " & errText
 	End If
 
 End If
