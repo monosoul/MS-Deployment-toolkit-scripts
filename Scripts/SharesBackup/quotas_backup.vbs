@@ -10,7 +10,24 @@ Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quotas_delete.
 'Set objFileOut1 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\drives_sn.list", ForWriting, True)
 objFileOut.Write("@echo off" & vbCrLf)
 
-If objFSO.FileExists(SysDrive & "\Windows\System32\dirquota.exe") Then
+quotasexist=0
+
+'Получаем список квот
+oShell.run "cmd /c ""dirquota q l > " & SysDrive & "\backedup_shares\all_quotas.txt""",0,bWaitOnReturn
+
+'Если квоты есть, то будут выгружаться щаблоны и генерироваться командный файл для удаления квот
+Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\all_quotas.txt", ForReading)
+Do Until objFileIn.AtEndOfStream
+	tmpline = objFileIn.ReadLine
+	If (Len(tmpline) > 0) Then
+		If (InStr(tmpline, "Quota Path:") = 1) Then quota_path = LTrim(Right(tmpline, Len(tmpline) - Len("Quota Path:")))
+		If quota_path <> "" Then
+			quotasexist=1
+		End If
+	End If
+Loop
+
+If objFSO.FileExists(SysDrive & "\Windows\System32\dirquota.exe") And (quotasexist = 1) Then
 	'Экспортируем шаблоны
 	oShell.run "dirquota template export /file:" & SysDrive & "\backedup_shares\quota_templates.xml",0,bWaitOnReturn
 	
@@ -26,8 +43,6 @@ Else
 	objFileQtemplates.Close
 End If
 
-'Получаем список квот
-oShell.run "cmd /c ""dirquota q l > " & SysDrive & "\backedup_shares\all_quotas.txt""",0,bWaitOnReturn
-
 objFileOut.Close
+objFileIn.Close
 'objFileOut1.Close
