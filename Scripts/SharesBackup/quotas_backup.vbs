@@ -14,7 +14,7 @@ objFileOut.Write("chcp 1251" & vbCrLf)
 quotasexist=0
 
 'Получаем список квот
-oShell.run "cmd /c ""dirquota q l > " & SysDrive & "\backedup_shares\all_quotas.txt""",0,bWaitOnReturn
+oShell.run "cmd /c chcp 1251 & dirquota q l > """ & SysDrive & "\backedup_shares\all_quotas.txt""",0,bWaitOnReturn
 
 'Если квоты есть, то будут выгружаться щаблоны и генерироваться командный файл для удаления квот
 Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\all_quotas.txt", ForReading)
