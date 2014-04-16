@@ -10,6 +10,7 @@ Set objFileIn = objFSO.OpenTextFile(SysDrive & "\backedup_shares\all_quotas.txt"
 Set objFileOut = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quotas_create.bat", ForWriting, True)
 Set filesize = objFSO.GetFile(SysDrive & "\backedup_shares\quota_templates.xml")
 objFileOut.Write("@echo off" & vbCrLf)
+objFileOut.Write("chcp 1251" & vbCrLf)
 
 Set objRegEx = CreateObject("VBScript.RegExp")
 objRegEx.Global = True   

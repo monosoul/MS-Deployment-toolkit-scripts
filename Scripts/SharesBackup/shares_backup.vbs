@@ -177,9 +177,13 @@ Set objFileOut3 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\shares_restor
 Set objFileOut5 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\remove_inheritance.cmd", ForWriting, True)
 Set objFileOut6 = objFSO.OpenTextFile(SysDrive & "\backedup_shares\own_shares.cmd", ForWriting, True)
 objFileOut2.Write("@echo off" & vbCrLf)
+objFileOut2.Write("chcp 1251" & vbCrLf)
 objFileOut3.Write("@echo off" & vbCrLf)
+objFileOut3.Write("chcp 1251" & vbCrLf)
 objFileOut5.Write("@echo off" & vbCrLf)
+objFileOut5.Write("chcp 1251" & vbCrLf)
 objFileOut6.Write("@echo off" & vbCrLf)
+objFileOut6.Write("chcp 1251" & vbCrLf)
 
 'Создаём список сопоставления букв разделов и серийных номеров
 For Each objDrive in colDrives
