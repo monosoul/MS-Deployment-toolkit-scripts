@@ -59,6 +59,12 @@ Sub ProcessQuota()
 		source_template = RTrim(Left(source_template, Len(source_template) - Len("(Does not match template)")))
 	End If
 	
+	'Удаляем "(Matches template)" из имени шаблона, если он содержит эту надпись
+	
+	If (InStr(source_template, "(Matches template)") <> 0) Then
+		source_template = RTrim(Left(source_template, Len(source_template) - Len("(Matches template)")))
+	End If
+	
 	'Выдёргиваем тип квоты из строки с лимитом
 	Set matches = objRegEx.Execute(quota_limit)
 	count = matches.count

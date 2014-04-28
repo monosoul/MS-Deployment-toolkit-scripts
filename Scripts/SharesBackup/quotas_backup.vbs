@@ -47,3 +47,33 @@ End If
 objFileOut.Close
 objFileIn.Close
 'objFileOut1.Close
+
+'Меняем кодировку файла с шаблонами с UCS-2 LE (UTF-16) на UTF-8
+ChangeCodepage SysDrive & "\backedup_shares\quota_templates.xml", "UTF-16LE", "UTF-8"
+
+'Меняем версию базы в файле шаблонов, если сейчас указана версия 1.0
+Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quota_templates.xml", ForReading)
+strText = objFileACL.ReadAll
+objFileACL.Close
+strNewText = Replace(strText, "<Header DatabaseVersion = '1.0' >", "<Header DatabaseVersion = '2.0' >")
+Set objFileACL = objFSO.OpenTextFile(SysDrive & "\backedup_shares\quota_templates.xml", ForWriting)
+objFileACL.Write strNewText
+objFileACL.Close
+
+'Меняем кодировку файла с шаблонами с UTF-8 на UCS-2 LE (UTF-16)
+ChangeCodepage SysDrive & "\backedup_shares\quota_templates.xml", "UTF-8", "UTF-16LE"
+
+Function ChangeCodepage(ByVal FileName, ByVal FromCP, ByVal ToCP)
+  Set ADODBStream = CreateObject("ADODB.Stream")
+  ADODBStream.Type = 2
+  ADODBStream.Charset = FromCP
+  ADODBStream.Open()
+  ADODBStream.LoadFromFile(FileName)
+  Text = ADODBStream.ReadText()
+  ADODBStream.Close()
+  ADODBStream.Charset = ToCP
+  ADODBStream.Open()
+  ADODBStream.WriteText(Text)
+  ADODBStream.SaveToFile FileName, 2
+  ADODBStream.Close()
+End Function
