@@ -243,7 +243,7 @@ For Each objItem in colItems
 			objFileOut6.Write("takeown /R /A /D ""Y"" /F ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ > NUL" & vbCrLf)
 			objFileOut6.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
 			objFileOut6.Write("echo Adding Administrators and SYSTEM to ACL on %SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & " ..." & vbCrLf)
-			objFileOut6.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -actn ace -ace ""n:S-1-5-18;p:full"" -ace ""n:S-1-5-32-544;p:full""" & vbCrLf)
+			objFileOut6.Write("%SystemDrive%\backedup_shares\setacl.exe -silent -ot file -on ""%SystemDrive%" & Right(objItem.Path, Len(objItem.Path) - Len("C:")) & """ -rec cont_obj -actn ace -ace ""n:S-1-5-18;p:full"" -ace ""n:S-1-5-32-544;p:full""" & vbCrLf)
 			objFileOut6.Write("if not %errorlevel%==0 (" & vbCrLf & "	echo Failed." & vbCrLf & ") else (" & vbCrLf & "	echo Done." & vbCrLf & ")" & vbCrLf)
 			
 			' Отключаем наследование и удаляем CREATOR-OWNER (remove_inheritance.cmd)
