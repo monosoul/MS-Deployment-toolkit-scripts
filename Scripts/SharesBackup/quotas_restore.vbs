@@ -22,7 +22,7 @@ Dim DrivesSNarray
 DrivesSNarray = FileToArray(SysDrive & "\backedup_shares\drives_sn.list", False)
 
 'Импортируем шаблоны, если они были экспортированы ранее
-If filesize.size <> 0 Then
+If filesize.size > 2 Then
 	objFileOut.Write("dirquota template import /file:" & SysDrive & "\backedup_shares\quota_templates.xml /Overwrite" & vbCrLf)
 End If
 
